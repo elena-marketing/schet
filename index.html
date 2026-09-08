@@ -543,8 +543,6 @@ function renderItems() {
         <div><label>Цена за штуку, ₽</label>
           <input data-price="${i}" type="number" inputmode="decimal" step="0.01" value="${it.price || ''}"></div>
       </div>`;
-    const swap = `<button class="btn line" data-mode="${i}" style="margin-top:8px;padding:9px;font-size:14px">
-        ${it.mode === 'перевозка' ? 'ввести своим текстом' : 'заполнить как перевозку'}</button>`;
 
     if (it.mode === 'перевозка') {
       return `<div class="item">${head}
@@ -562,12 +560,12 @@ function renderItems() {
             <input data-to="${i}" value="${hesc(it.to || '')}" placeholder="г. Москва, ул. Рязанская, 28Б"></div>
         </div>
         <div class="hint">${hesc(itemName(it))}</div>
-        ${money}${swap}</div>`;
+        ${money}</div>`;
     }
     return `<div class="item">${head}
       <label>Что сделано</label>
       <textarea data-name="${i}" placeholder="Опиши услугу">${hesc(it.name)}</textarea>
-      ${money}${swap}</div>`;
+      ${money}</div>`;
   }).join('');
   updateTotal();
 }
@@ -644,12 +642,12 @@ $('pdf').addEventListener('click', () => {
 });
 
 // ── бумажный вид: он же уходит в PDF через печать ────────────────────────────
-function stampImg(place) {
+function stampImg() {
   // Оттиск должен лечь на строки подписи, поэтому поднимаем его отрицательным
   // отступом и уводим под текст.
   return (stampOn && stampData)
     ? `<img src="${stampData.dataUrl}" alt="" style="height:96px;display:block;position:relative;
-        z-index:-1;${place === 'счёт' ? 'margin:-84px 0 0 132px;' : 'margin:-58px auto 0;'}">`
+        z-index:-1;margin:-52px 0 0 132px">`
     : '<div style="margin-top:14px;font-size:11px">М.П.</div>';
 }
 
@@ -698,7 +696,7 @@ function paperHtml({ client, items: list, number, date }) {
     <div class="words">${words}</div>
     <div class="sign">Руководитель &nbsp;_____________________ (${I.signShort})<br>
       Бухгалтер &nbsp;&nbsp;&nbsp;&nbsp;_____________________ (${I.signShort})</div>
-    ${stampImg('счёт')}
+    ${stampImg()}
   </div>
 
   <div class="doc">
@@ -720,7 +718,7 @@ function paperHtml({ client, items: list, number, date }) {
       Заказчик претензий по объему, качеству и срокам оказания услуг не имеет.</div>
     <div class="sign">Индивидуальный предприниматель<br>
       _________________________${I.sign}</div>
-    ${stampImg('счёт')}
+    ${stampImg()}
     <div class="sign">Грузоотправитель/грузополучатель<br>
       _________________/_____________<br>М.П.</div>
   </div>`;
@@ -746,12 +744,6 @@ $('items').addEventListener('input', (e) => {
 $('items').addEventListener('click', (e) => {
   const d = e.target.dataset;
   if (d.del !== undefined) { items.splice(Number(d.del), 1); renderItems(); return; }
-  if (d.mode !== undefined) {
-    const it = items[d.mode];
-    if (it.mode === 'перевозка') { it.mode = 'текст'; it.name = itemName(it); }
-    else { it.mode = 'перевозка'; }
-    renderItems();
-  }
 });
 ['num', 'date', 'ooLine', 'ooName'].forEach((id) => {
   $(id).addEventListener('input', saveDraft);
