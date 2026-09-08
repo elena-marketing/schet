@@ -171,6 +171,18 @@
     </div>
     <div class="hint" id="stampHint" style="display:none">Обрезка: нажми на картинке
       левый верхний угол нужного куска, потом правый нижний.</div>
+    <div id="stampPos" style="display:none;margin-top:10px">
+      <label>Положение печати</label>
+      <div class="row">
+        <button class="btn line" data-shift="счёт:-1" style="padding:7px;font-size:13px">Счёт ниже</button>
+        <button class="btn line" data-shift="счёт:1" style="padding:7px;font-size:13px">Счёт выше</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn line" data-shift="акт:-1" style="padding:7px;font-size:13px">Акт ниже</button>
+        <button class="btn line" data-shift="акт:1" style="padding:7px;font-size:13px">Акт выше</button>
+      </div>
+      <div class="hint" id="stampPosHint"></div>
+    </div>
     <div class="hint">Скан хранится только в этом телефоне. Никуда не отправляется и на сайте
       его нет: подпись с печатью — вещь, которой чужие руки касаться не должны.</div>
   </div>
@@ -260,6 +272,8 @@ function journal() {
 }
 
 function recordIssued(data, kind) {
+  // В журнале держим только строку: номер, дату, заказчика и сумму.
+  // Содержимое документа не храним — оно занимает память, а нужен список.
   const list = journal();
   const total = data.items.reduce((s, i) => s + i.qty * i.price, 0);
   const key = data.number + '|' + data.date.str;
@@ -267,21 +281,15 @@ function recordIssued(data, kind) {
   const entry = found || { key };
   entry.number = data.number;
   entry.dateStr = data.date.str;
-  entry.dateIso = $('date').value;
-  entry.dateWords = data.date.words;
-  entry.client = data.client;
-  entry.items = data.items;
+  entry.client = data.client.short;
   entry.total = total;
-  entry.kinds = Array.from(new Set([...(entry.kinds || []), kind]));
   if (!found) list.unshift(entry);
-  // Память браузера не бесконечна, а скан печати занимает много. Если места
-  // не хватило, отрезаем самые старые записи, но новые не теряем.
-  let rest = list.slice(0, 200);
+  let rest = list.slice(0, 300);
   for (;;) {
     try { localStorage.setItem('schet-journal', JSON.stringify(rest)); break; }
     catch (e) {
       if (rest.length <= 1) { $('numHint').textContent =
-        'Не хватает памяти телефона, журнал не сохранился. Загрузи печать помельче.'; break; }
+        'Не хватает памяти телефона, журнал не сохранился.'; break; }
       rest = rest.slice(0, Math.max(1, Math.floor(rest.length / 2)));
     }
   }
@@ -294,7 +302,7 @@ function renderLast() {
   const e = list[0];
   $('cardLast').style.display = 'block';
   $('lastLine').textContent =
-    `Последний: № ${e.number} от ${e.dateStr}, ${e.client.short}, ${S.money(e.total)} ₽`;
+    `Последний: № ${e.number} от ${e.dateStr}, ${e.client}, ${S.money(e.total)} ₽`;
 }
 
 function renderJournal() {
@@ -302,32 +310,12 @@ function renderJournal() {
   $('journalTitle').textContent = list.length
     ? `Выставленные документы (${list.length})` : 'Выставленные документы';
   $('journalList').innerHTML = list.length
-    ? list.map((e, i) => `<div class="jrow" data-open="${i}">
-        <span><b>№ ${e.number}</b> от ${e.dateStr} · ${hesc(e.client.short)}</span>
+    ? list.map((e) => `<div class="jrow">
+        <span><b>№ ${e.number}</b> от ${e.dateStr} · ${hesc(e.client)}</span>
         <span class="jsum">${S.money(e.total)} ₽</span></div>`).join('')
     : '<div class="hint">Пока пусто. Как выпустишь первый документ, он появится здесь.</div>';
 }
 
-function openFromJournal(i) {
-  const e = journal()[i];
-  if (!e) return;
-  const key = Object.keys(CLIENTS).find((k) => CLIENTS[k].line === e.client.line);
-  if (key) {
-    $('client').value = key;
-    $('oneoff').style.display = 'none';
-  } else {
-    $('client').value = '__new';
-    $('oneoff').style.display = 'block';
-    $('ooLine').value = e.client.line;
-    $('ooName').value = e.client.actName;
-  }
-  $('num').value = e.number;
-  if (e.dateIso) $('date').value = e.dateIso;
-  items = e.items.map((it) => ({ name: it.name, qty: it.qty, price: it.price }));
-  renderItems();
-  saveDraft();
-  $('cardJournal').style.display = 'none';
-}
 
 // ── чистка скана печати ─────────────────────────────────────────────────────
 // Фотография листа даёт серый фон и поля вокруг оттиска. Убираем светлые
@@ -497,6 +485,7 @@ function renderStamp() {
     : '<div class="hint" style="margin:0">Скан пока не загружен, документы будут с надписью М.П.</div>';
   // Когда печать уже загружена, лишние кнопки только мешают: оставляем
   // маленькую «поправить скан», а под ней прячем чистку и обрезку.
+  renderStampPos();
   const tools = $('stampTools');
   if (tools) tools.style.display = (stampData && toolsOpen) ? 'flex' : 'none';
   $('stampEdit').style.display = stampData ? 'block' : 'none';
@@ -639,8 +628,10 @@ function makeWord(kind) {
   const { client, items: list, number, date } = data;
   const stamp = stampForDoc();
   const xml = kind === 'акт'
-    ? S.buildAct({ number, dateStr: date.str, dateWords: date.words, client, items: list, stamp })
-    : S.buildInvoice({ number, dateStr: date.str, client, items: list, stamp });
+    ? S.buildAct({ number, dateStr: date.str, dateWords: date.words, client, items: list, stamp,
+                   stampUp: stampPos['акт'] })
+    : S.buildInvoice({ number, dateStr: date.str, client, items: list, stamp,
+                       stampUp: stampPos['счёт'] });
   const name = kind === 'акт'
     ? `Акт №${number} от ${date.file} ${client.short}.docx`
     : `Счет №${number} от ${date.file} ${client.short}.docx`;
@@ -719,7 +710,7 @@ function paperHtml({ client, items: list, number, date }) {
     <div class="words">${words}</div>
     <div class="sign">Руководитель &nbsp;_____________________ (${I.signShort})<br>
       Бухгалтер &nbsp;&nbsp;&nbsp;&nbsp;_____________________ (${I.signShort})</div>
-    ${stampImg()}
+    ${stampImg(Math.round(-74 * stampPos['счёт'] / 1.25))}
   </div>
 
   <div class="doc">
@@ -741,7 +732,7 @@ function paperHtml({ client, items: list, number, date }) {
       Заказчик претензий по объему, качеству и срокам оказания услуг не имеет.</div>
     <div class="sign">Индивидуальный предприниматель<br>
       _________________________${I.sign}</div>
-    ${stampImg(-82)}
+    ${stampImg(Math.round(-74 * stampPos['акт'] / 0.95))}
     <div class="sign">Грузоотправитель/грузополучатель<br>
       _________________/_____________<br>М.П.</div>
   </div>`;
@@ -784,11 +775,6 @@ $('openJournal').addEventListener('click', () => {
   $('cardJournal').style.display = 'block';
 });
 $('closeJournal').addEventListener('click', () => { $('cardJournal').style.display = 'none'; });
-$('journalList').addEventListener('click', (e) => {
-  const box = e.target.closest ? e.target.closest('[data-open]') : null;
-  if (box) openFromJournal(Number(box.dataset.open));
-});
-
 $('add').addEventListener('click', () => {
   if (items.length >= 5) { alert('Больше пяти строк в один счёт не ставим'); return; }
   // Вторая строка продолжает первую: начали с перевозки — и дальше перевозка.
@@ -850,6 +836,26 @@ let cropStart = null;
 let stampOriginal = null;
 let toolsOpen = false;
 
+// Насколько печать поднята над своей строкой, долями высоты картинки.
+// Подбирать за Елену бесполезно: у неё свой скан и свой просмотрщик,
+// поэтому кнопки двигают оттиск сами.
+const STAMP_DEFAULT = { 'счёт': 1.25, 'акт': 0.95 };
+let stampPos = Object.assign({}, STAMP_DEFAULT);
+
+function loadStampPos() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('schet-stamp-pos') || 'null');
+    if (raw) stampPos = Object.assign({}, STAMP_DEFAULT, raw);
+  } catch (e) {}
+}
+
+function renderStampPos() {
+  $('stampPos').style.display = stampData ? 'block' : 'none';
+  $('stampPosHint').textContent =
+    `Сейчас: счёт ${stampPos['счёт'].toFixed(2)}, акт ${stampPos['акт'].toFixed(2)}. ` +
+    'Нажимай, пока оттиск не ляжет на строку подписи.';
+}
+
 function setStamp(dataUrl, ext) {
   stampData = { dataUrl, ext: ext || 'png' };
   try { localStorage.setItem('schet-stamp', JSON.stringify(stampData)); }
@@ -896,6 +902,14 @@ $('stampBox').addEventListener('click', (e) => {
 });
 
 $('stampEdit').addEventListener('click', () => { toolsOpen = !toolsOpen; renderStamp(); });
+$('stampPos').addEventListener('click', (e) => {
+  const v = e.target.dataset.shift;
+  if (!v) return;
+  const [doc, dir] = v.split(':');
+  stampPos[doc] = Math.max(0, Math.min(2.5, stampPos[doc] + Number(dir) * 0.12));
+  try { localStorage.setItem('schet-stamp-pos', JSON.stringify(stampPos)); } catch (err) {}
+  renderStampPos();
+});
 $('stampPick').addEventListener('click', () => $('stampFile').click());
 $('stampFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -949,6 +963,7 @@ $('client').addEventListener('change', () => {
 
   fillClients();
   loadStamp();
+  loadStampPos();
   shrinkStoredStamp();
   renderStamp();
   if (ISPDATA && ISPDATA.shortName) $('who').textContent = ISPDATA.shortName + ' · документы делаются в телефоне';

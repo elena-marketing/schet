@@ -92,8 +92,11 @@ const jrn = JSON.parse(store['schet-journal'] || '[]');
 if (jrn.length !== 1) problems.push('после первого документа в журнале записей: ' + jrn.length);
 else {
   const e = jrn[0];
-  if (!e.number || !e.client || !e.total) problems.push('запись журнала неполная');
-  if (!(e.kinds || []).length) problems.push('в записи не отмечено, что выпущено');
+  if (!e.number || !e.client || !e.total || !e.dateStr) problems.push('запись журнала неполная');
+  // содержимое документа в журнале не храним: нужна строка, а не копия счёта
+  const extra = Object.keys(e).filter((k) => !['key', 'number', 'dateStr', 'client', 'total'].includes(k));
+  if (extra.length) problems.push('в журнале лишние поля: ' + extra.join(', '));
+  if (typeof e.client !== 'string') problems.push('заказчик в журнале должен быть строкой');
 }
 if (!nodes['cardLast'] || nodes['cardLast'].style.display !== 'block') {
   problems.push('строка последнего документа не показана');

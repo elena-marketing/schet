@@ -109,6 +109,16 @@ for (const [name, xml] of [['счёт', inv], ['акт', act]]) {
   }
   if (!xml.includes('<wp:anchor')) problems.push(name + ': печать не встала');
 }
+// 5. кнопки положения печати должны реально двигать оттиск
+const low = S.buildAct({ number: 5, dateStr: '08.09.2026', dateWords: 'д', client, items: many,
+  stamp, stampUp: 0.4 });
+const high = S.buildAct({ number: 5, dateStr: '08.09.2026', dateWords: 'д', client, items: many,
+  stamp, stampUp: 1.6 });
+const off = (x) => Number((x.match(/positionV[\s\S]*?<wp:posOffset>(-?\d+)</) || [])[1]);
+if (!(off(high) < off(low))) {
+  problems.push('настройка положения печати не двигает оттиск: ' + off(low) + ' и ' + off(high));
+}
+
 if (alerts.length) problems.push('всплыли сообщения: ' + alerts.join('; '));
 
 if (problems.length) {
@@ -120,3 +130,4 @@ console.log('глубокая проверка пройдена:');
 console.log('  реквизиты разбираются в трёх записях, строка перевозки собирается верно');
 console.log('  разовый заказчик выпускается и не попадает в справочник');
 console.log('  счёт и акт на пять строк: суммы, прописи и печать на месте');
+console.log('  кнопки положения печати сдвигают оттиск:', off(low), '→', off(high));

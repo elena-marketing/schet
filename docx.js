@@ -322,7 +322,7 @@ function totalsBlock(total, withPayLine = true) {
   return table(rows, { borders: false });
 }
 
-function buildInvoice({ number, dateStr, client, items, stamp }) {
+function buildInvoice({ number, dateStr, client, items, stamp, stampUp }) {
   const total = items.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
   const body = [
     bankBlock(),
@@ -343,13 +343,13 @@ function buildInvoice({ number, dateStr, client, items, stamp }) {
     p(`Руководитель _____________________ (${ISP.signShort})`),
     p(''),
     p(`Бухгалтер       _____________________ (${ISP.signShort})`),
-    stamp ? stampParagraph(stamp.bytes, 1.25) : p(''),
+    stamp ? stampParagraph(stamp.bytes, stampUp === undefined ? 1.25 : stampUp) : p(''),
     stamp ? p('') : p('М.П.'),
   ].join('');
   return documentXml(body);
 }
 
-function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
+function buildAct({ number, dateStr, dateWords, client, items, stamp, stampUp }) {
   const total = items.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
   let words = rublesInWords(total);
   words = words.charAt(0).toLowerCase() + words.slice(1);
@@ -371,7 +371,7 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`),
-    stamp ? stampParagraph(stamp.bytes, 0.95, 250000) : p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes, stampUp === undefined ? 0.95 : stampUp, 250000) : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),
