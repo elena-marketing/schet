@@ -337,22 +337,25 @@ function cleanStamp(dataUrl, box) {
       const data = ctx.getImageData(0, 0, sw, sh);
       const px = data.data;
 
-      // порог берём от самой светлой части: у фотографии белый редко бывает белым
+      // Порог берём от самой светлой части: у фотографии белый редко бывает белым.
+      // Между «бумагой» и «чернилами» оставляем узкую полосу сглаживания —
+      // если её растянуть, полупрозрачная бумага даёт серый налёт, и печать
+      // выглядит на тёмном фоне.
       let maxL = 0;
       for (let i = 0; i < px.length; i += 4) {
         const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
         if (l > maxL) maxL = l;
       }
-      const cut = Math.max(120, maxL * 0.78);
+      const hi = Math.max(140, maxL * 0.72);
+      const lo = hi * 0.62;
 
       let minX = sw, minY = sh, maxX = -1, maxY = -1;
       for (let y = 0; y < sh; y++) {
         for (let x = 0; x < sw; x++) {
           const i = (y * sw + x) * 4;
           const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-          if (l >= cut) { px[i + 3] = 0; continue; }
-          const k = Math.max(0, Math.min(1, (cut - l) / cut));
-          px[i + 3] = Math.round(255 * Math.min(1, k * 1.6));
+          if (l >= hi) { px[i + 3] = 0; continue; }
+          px[i + 3] = l <= lo ? 255 : Math.round(255 * (hi - l) / (hi - lo));
           if (px[i + 3] > 40) {
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
@@ -710,7 +713,7 @@ function paperHtml({ client, items: list, number, date }) {
     <div class="words">${words}</div>
     <div class="sign">Руководитель &nbsp;_____________________ (${I.signShort})<br>
       Бухгалтер &nbsp;&nbsp;&nbsp;&nbsp;_____________________ (${I.signShort})</div>
-    ${stampImg(Math.round(-74 * stampPos['счёт'] / 1.25))}
+    ${stampImg(Math.round(-150 * stampPos['счёт']))}
   </div>
 
   <div class="doc">
@@ -732,7 +735,7 @@ function paperHtml({ client, items: list, number, date }) {
       Заказчик претензий по объему, качеству и срокам оказания услуг не имеет.</div>
     <div class="sign">Индивидуальный предприниматель<br>
       _________________________${I.sign}</div>
-    ${stampImg(Math.round(-74 * stampPos['акт'] / 0.95))}
+    ${stampImg(Math.round(-150 * stampPos['акт']))}
     <div class="sign">Грузоотправитель/грузополучатель<br>
       _________________/_____________<br>М.П.</div>
   </div>`;
@@ -839,7 +842,7 @@ let toolsOpen = false;
 // Насколько печать поднята над своей строкой, долями высоты картинки.
 // Подбирать за Елену бесполезно: у неё свой скан и свой просмотрщик,
 // поэтому кнопки двигают оттиск сами.
-const STAMP_DEFAULT = { 'счёт': 1.25, 'акт': 0.95 };
+const STAMP_DEFAULT = { 'счёт': 0.42, 'акт': 0.42 };
 let stampPos = Object.assign({}, STAMP_DEFAULT);
 
 function loadStampPos() {

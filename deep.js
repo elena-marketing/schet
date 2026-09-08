@@ -109,7 +109,21 @@ for (const [name, xml] of [['счёт', inv], ['акт', act]]) {
   }
   if (!xml.includes('<wp:anchor')) problems.push(name + ': печать не встала');
 }
-// 5. кнопки положения печати должны реально двигать оттиск
+// 5. печать привязана к самой строке подписи, а не к следующему абзацу:
+// иначе её положение зависит от промежутка между абзацами в просмотрщике
+for (const rows of [1, 3, 5]) {
+  const list = Array.from({ length: rows }, (_, i) => ({ name: 'Строка ' + (i + 1), qty: 1, price: 1000 }));
+  const a = S.buildAct({ number: 1, dateStr: 'д', dateWords: 'д', client, items: list, stamp });
+  const inv2 = S.buildInvoice({ number: 1, dateStr: 'д', client, items: list, stamp });
+  const inSign = (xml, mark) => {
+    const par = xml.split('<w:p>').find((b) => b.includes(mark));
+    return !!par && par.includes('<wp:anchor');
+  };
+  if (!inSign(a, 'С.С. Пирогов')) problems.push('акт на ' + rows + ' строк: печать не в строке подписи');
+  if (!inSign(inv2, 'Бухгалтер')) problems.push('счёт на ' + rows + ' строк: печать не в строке подписи');
+}
+
+// 6. кнопки положения печати должны реально двигать оттиск
 const low = S.buildAct({ number: 5, dateStr: '08.09.2026', dateWords: 'д', client, items: many,
   stamp, stampUp: 0.4 });
 const high = S.buildAct({ number: 5, dateStr: '08.09.2026', dateWords: 'д', client, items: many,
@@ -130,4 +144,5 @@ console.log('глубокая проверка пройдена:');
 console.log('  реквизиты разбираются в трёх записях, строка перевозки собирается верно');
 console.log('  разовый заказчик выпускается и не попадает в справочник');
 console.log('  счёт и акт на пять строк: суммы, прописи и печать на месте');
+console.log('  печать держится в строке подписи при 1, 3 и 5 строках в таблице');
 console.log('  кнопки положения печати сдвигают оттиск:', off(low), '→', off(high));

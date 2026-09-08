@@ -230,7 +230,7 @@ function runProps(bold, size) {
 }
 
 function p(text, opts = {}) {
-  const { bold, size = 20, align, space = 0, lead } = opts;
+  const { bold, size = 20, align, space = 0, lead, extra } = opts;
   const rPr = runProps(bold, size);
   const pPr = `<w:pPr><w:spacing w:before="${space}" w:after="${space}" w:line="240" w:lineRule="auto"/>` +
     (align ? `<w:jc w:val="${align}"/>` : '') + rPr + '</w:pPr>';
@@ -239,7 +239,7 @@ function p(text, opts = {}) {
     ? `<w:r>${runProps(true, size)}<w:t xml:space="preserve">${esc(lead)}</w:t></w:r>` +
       `<w:r>${rPr}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`
     : `<w:r>${rPr}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
-  return `<w:p>${pPr}${runs}</w:p>`;
+  return `<w:p>${pPr}${runs}${extra || ''}</w:p>`;
 }
 
 function tc(text, width, opts = {}) {
@@ -342,8 +342,9 @@ function buildInvoice({ number, dateStr, client, items, stamp, stampUp }) {
     p(''),
     p(`Руководитель _____________________ (${ISP.signShort})`),
     p(''),
-    p(`Бухгалтер       _____________________ (${ISP.signShort})`),
-    stamp ? stampParagraph(stamp.bytes, stampUp === undefined ? 1.25 : stampUp) : p(''),
+    p(`Бухгалтер       _____________________ (${ISP.signShort})`,
+      stamp ? { extra: stampRun(stamp.bytes, stampUp === undefined ? 0.42 : stampUp) } : {}),
+    p(''),
     stamp ? p('') : p('М.П.'),
   ].join('');
   return documentXml(body);
@@ -370,8 +371,9 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp, stampUp })
       'качеству и срокам оказания услуг не имеет.'),
     p(''),
     p('Индивидуальный предприниматель'),
-    p(`_________________________${ISP.sign}`),
-    stamp ? stampParagraph(stamp.bytes, stampUp === undefined ? 0.95 : stampUp, 250000) : p('М.П.'),
+    p(`_________________________${ISP.sign}`,
+      stamp ? { extra: stampRun(stamp.bytes, stampUp === undefined ? 0.42 : stampUp, 250000) } : {}),
+    stamp ? p('') : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),
