@@ -193,19 +193,24 @@ function imageSize(bytes) {
   return { w: 600, h: 600 };
 }
 
+// Насколько оттиск поднят над строкой подписи, долями своей высоты.
+// Значение одно на оба документа: разные величины и были причиной того,
+// что в счёте печать стояла ровно, а в акте гуляла.
+const STAMP_UP = 0.45;
+
 // Печать со скана: ширина 5 см, высота по пропорции. Картинка плавающая и уходит
 // за текст, поэтому оттиск ложится прямо на строки подписи, как на бумаге.
 // up — насколько поднять её над своей строкой, долями от высоты картинки.
-function stampRun(bytes, up, left) {
+function stampRun(bytes, up) {
   const { w, h } = imageSize(bytes);
-  const cx = 1550000;
+  const cx = 1400000;
   const cy = Math.round(cx * h / w);
   const dy = -Math.round(cy * (up === undefined ? 0.7 : up));
   return `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0"
  relativeHeight="3" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1"
  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
 <wp:simplePos x="0" y="0"/>
-<wp:positionH relativeFrom="column"><wp:posOffset>${left === undefined ? 1150000 : left}</wp:posOffset></wp:positionH>
+<wp:positionH relativeFrom="column"><wp:align>center</wp:align></wp:positionH>
 <wp:positionV relativeFrom="paragraph"><wp:posOffset>${dy}</wp:posOffset></wp:positionV>
 <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
 <wp:wrapNone/><wp:docPr id="7" name="Печать"/>
@@ -220,8 +225,8 @@ function stampRun(bytes, up, left) {
 </a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
 }
 
-function stampParagraph(bytes, up, left) {
-  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes, up, left)}</w:p>`;
+function stampParagraph(bytes, up) {
+  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes, up)}</w:p>`;
 }
 
 function runProps(bold, size) {
@@ -322,7 +327,7 @@ function totalsBlock(total, withPayLine = true) {
   return table(rows, { borders: false });
 }
 
-function buildInvoice({ number, dateStr, client, items, stamp, stampUp }) {
+function buildInvoice({ number, dateStr, client, items, stamp }) {
   const total = items.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
   const body = [
     bankBlock(),
@@ -343,14 +348,14 @@ function buildInvoice({ number, dateStr, client, items, stamp, stampUp }) {
     p(`Руководитель _____________________ (${ISP.signShort})`),
     p(''),
     p(`Бухгалтер       _____________________ (${ISP.signShort})`,
-      stamp ? { extra: stampRun(stamp.bytes, stampUp === undefined ? 0.42 : stampUp) } : {}),
+      stamp ? { extra: stampRun(stamp.bytes, STAMP_UP) } : {}),
     p(''),
     stamp ? p('') : p('М.П.'),
   ].join('');
   return documentXml(body);
 }
 
-function buildAct({ number, dateStr, dateWords, client, items, stamp, stampUp }) {
+function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
   const total = items.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
   let words = rublesInWords(total);
   words = words.charAt(0).toLowerCase() + words.slice(1);
@@ -372,7 +377,7 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp, stampUp })
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`,
-      stamp ? { extra: stampRun(stamp.bytes, stampUp === undefined ? 0.42 : stampUp, 250000) } : {}),
+      stamp ? { extra: stampRun(stamp.bytes, STAMP_UP) } : {}),
     stamp ? p('') : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
