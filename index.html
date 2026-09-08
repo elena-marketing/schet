@@ -132,6 +132,12 @@
     <div id="stampBox" style="margin-top:10px"></div>
     <input type="file" id="stampFile" accept="image/png,image/jpeg" style="display:none">
     <button class="btn line" id="stampPick" style="padding:9px;font-size:14px">Загрузить скан печати</button>
+    <div class="row" id="stampTools" style="display:none">
+      <button class="btn line" id="stampClean" style="padding:9px;font-size:14px">Убрать фон</button>
+      <button class="btn line" id="stampCrop" style="padding:9px;font-size:14px">Обрезать</button>
+    </div>
+    <div class="hint" id="stampHint" style="display:none">Обрезка: нажми на картинке
+      левый верхний угол нужного куска, потом правый нижний.</div>
     <div class="hint">Скан хранится только в этом телефоне. Никуда не отправляется и на сайте
       его нет: подпись с печатью — вещь, которой чужие руки касаться не должны.</div>
   </div>
@@ -177,6 +183,66 @@ function saveData(text) {
   return loadData();
 }
 
+
+// ── чистка скана печати ─────────────────────────────────────────────────────
+// Фотография листа даёт серый фон и поля вокруг оттиска. Убираем светлые
+// точки в прозрачность и обрезаем пустые края — получается похоже на оттиск,
+// а не на вклеенный кусок бумаги. Всё считается в самом телефоне.
+function cleanStamp(dataUrl, box) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('картинка не читается'));
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      const sx = box ? Math.round(box.x0 * img.width) : 0;
+      const sy = box ? Math.round(box.y0 * img.height) : 0;
+      const sw = box ? Math.round((box.x1 - box.x0) * img.width) : img.width;
+      const sh = box ? Math.round((box.y1 - box.y0) * img.height) : img.height;
+      cv.width = sw; cv.height = sh;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      const data = ctx.getImageData(0, 0, sw, sh);
+      const px = data.data;
+
+      // порог берём от самой светлой части: у фотографии белый редко бывает белым
+      let maxL = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+        if (l > maxL) maxL = l;
+      }
+      const cut = Math.max(120, maxL * 0.78);
+
+      let minX = sw, minY = sh, maxX = -1, maxY = -1;
+      for (let y = 0; y < sh; y++) {
+        for (let x = 0; x < sw; x++) {
+          const i = (y * sw + x) * 4;
+          const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+          if (l >= cut) { px[i + 3] = 0; continue; }
+          const k = Math.max(0, Math.min(1, (cut - l) / cut));
+          px[i + 3] = Math.round(255 * Math.min(1, k * 1.6));
+          if (px[i + 3] > 40) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) { reject(new Error('на картинке не нашлось тёмных линий')); return; }
+      ctx.putImageData(data, 0, 0);
+
+      const pad = 6;
+      minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+      maxX = Math.min(sw - 1, maxX + pad); maxY = Math.min(sh - 1, maxY + pad);
+      const out = document.createElement('canvas');
+      out.width = maxX - minX + 1; out.height = maxY - minY + 1;
+      out.getContext('2d').drawImage(cv, minX, minY, out.width, out.height,
+        0, 0, out.width, out.height);
+      resolve(out.toDataURL('image/png'));
+    };
+    img.src = dataUrl;
+  });
+}
 
 // ── разбор реквизитов из вставленного текста ────────────────────────────────
 function parseRequisites(text) {
@@ -264,6 +330,8 @@ function renderStamp() {
   box.innerHTML = stampData
     ? `<img src="${stampData.dataUrl}" alt="печать" style="max-height:110px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff">`
     : '<div class="hint" style="margin:0">Скан пока не загружен, документы будут с надписью М.П.</div>';
+  const tools = $('stampTools');
+  if (tools) tools.style.display = stampData ? 'flex' : 'none';
   $('stampOn').style.background = stampOn ? 'var(--acc)' : '#fff';
   $('stampOn').style.color = stampOn ? '#fff' : 'var(--acc)';
   $('stampOff').style.background = stampOn ? '#fff' : 'var(--acc)';
@@ -552,18 +620,65 @@ function currentClientKind() {
   return items.some((i) => i.mode === 'перевозка') ? 'перевозка' : 'консультации';
 }
 
+let cropStart = null;
+let stampOriginal = null;
+
+function setStamp(dataUrl, ext) {
+  stampData = { dataUrl, ext: ext || 'png' };
+  try { localStorage.setItem('schet-stamp', JSON.stringify(stampData)); }
+  catch (err) { alert('Картинка слишком большая для памяти телефона, сфотографируй мельче'); return false; }
+  stampOn = true;
+  localStorage.setItem('schet-stamp-on', '1');
+  renderStamp();
+  return true;
+}
+
+$('stampClean').addEventListener('click', () => {
+  if (!stampData) return;
+  if (!stampOriginal) stampOriginal = stampData.dataUrl;
+  cleanStamp(stampData.dataUrl, null)
+    .then((url) => setStamp(url, 'png'))
+    .catch((e) => alert('Не получилось: ' + e.message));
+});
+
+$('stampCrop').addEventListener('click', () => {
+  if (!stampData) return;
+  cropStart = null;
+  $('stampHint').style.display = 'block';
+  alert('Нажми на картинке левый верхний угол нужного куска, потом правый нижний');
+});
+
+$('stampBox').addEventListener('click', (e) => {
+  if ($('stampHint').style.display !== 'block') return;
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG') return;
+  const r = img.getBoundingClientRect();
+  const point = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  if (!cropStart) { cropStart = point; return; }
+  const box = {
+    x0: Math.min(cropStart.x, point.x), y0: Math.min(cropStart.y, point.y),
+    x1: Math.max(cropStart.x, point.x), y1: Math.max(cropStart.y, point.y),
+  };
+  cropStart = null;
+  $('stampHint').style.display = 'none';
+  if (box.x1 - box.x0 < 0.05 || box.y1 - box.y0 < 0.05) { alert('Кусок слишком мелкий'); return; }
+  if (!stampOriginal) stampOriginal = stampData.dataUrl;
+  cleanStamp(stampData.dataUrl, box)
+    .then((url) => setStamp(url, 'png'))
+    .catch((err) => alert('Не получилось: ' + err.message));
+});
+
 $('stampPick').addEventListener('click', () => $('stampFile').click());
 $('stampFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    stampData = { dataUrl: reader.result, ext: file.type === 'image/png' ? 'png' : 'jpg' };
-    try { localStorage.setItem('schet-stamp', JSON.stringify(stampData)); }
-    catch (err) { alert('Картинка слишком большая, урежь её или сфотографируй мельче'); return; }
-    stampOn = true;
-    localStorage.setItem('schet-stamp-on', '1');
-    renderStamp();
+    stampOriginal = reader.result;
+    // сразу пробуем убрать фон: чаще всего это фотография листа
+    cleanStamp(reader.result, null)
+      .then((url) => setStamp(url, 'png'))
+      .catch(() => setStamp(reader.result, file.type === 'image/png' ? 'png' : 'jpg'));
   };
   reader.readAsDataURL(file);
 });
