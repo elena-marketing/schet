@@ -32,6 +32,9 @@
   .row .w120{flex:0 0 120px}
   .item{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;
     background:#fbfcfd}
+  .lastrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    font-size:13px;color:var(--dim)}
+  .linkbtn{background:none;border:0;color:var(--acc);font-size:13px;padding:0;white-space:nowrap}
   .jrow{display:flex;justify-content:space-between;gap:10px;align-items:baseline;
     padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
   .jrow:last-child{border-bottom:0}
@@ -88,10 +91,11 @@
       телефоне нужно один раз.</div>
   </div>
 
-  <div class="card" id="cardLast" style="display:none">
-    <label>Последний документ</label>
-    <div id="lastLine" style="font-weight:600"></div>
-    <button class="btn line" id="openJournal" style="padding:9px;font-size:14px">Все выставленные</button>
+  <div class="card" id="cardLast" style="display:none;padding:10px 12px">
+    <div class="lastrow">
+      <span id="lastLine"></span>
+      <button id="openJournal" class="linkbtn">все</button>
+    </div>
   </div>
 
   <div class="card" id="cardJournal" style="display:none">
@@ -277,7 +281,7 @@ function renderLast() {
   const e = list[0];
   $('cardLast').style.display = 'block';
   $('lastLine').textContent =
-    `№ ${e.number} от ${e.dateStr} · ${e.client.short} · ${S.money(e.total)} ₽`;
+    `Последний: № ${e.number} от ${e.dateStr}, ${e.client.short}, ${S.money(e.total)} ₽`;
 }
 
 function renderJournal() {
@@ -710,7 +714,7 @@ function paperHtml({ client, items: list, number, date }) {
       Заказчик претензий по объему, качеству и срокам оказания услуг не имеет.</div>
     <div class="sign">Индивидуальный предприниматель<br>
       _________________________${I.sign}</div>
-    ${stampImg(-64)}
+    ${stampImg(-96)}
     <div class="sign">Грузоотправитель/грузополучатель<br>
       _________________/_____________<br>М.П.</div>
   </div>`;
