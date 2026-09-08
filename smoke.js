@@ -87,6 +87,47 @@ if (!nodes['paper'].innerHTML.includes('АКТ №')) problems.push('в печа
 if (!nodes['paper'].innerHTML.includes('СЧЕТ №')) problems.push('в печатной версии нет счёта');
 if (!printed) problems.push('кнопка PDF не вызвала печать');
 
+// журнал и черновик
+const jrn = JSON.parse(store['schet-journal'] || '[]');
+if (jrn.length !== 1) problems.push('в журнале записей: ' + jrn.length + ', ожидалась одна');
+else {
+  const e = jrn[0];
+  if (!e.number || !e.client || !e.total) problems.push('запись журнала неполная');
+  if (!(e.kinds || []).length) problems.push('в записи не отмечено, что выпущено');
+}
+if (!nodes['cardLast'] || nodes['cardLast'].style.display !== 'block') {
+  problems.push('строка последнего документа не показана');
+}
+if (!store['schet-draft']) problems.push('черновик не сохранён');
+
+// вторая загрузка страницы: черновик должен вернуться
+const nodes2 = {};
+const handlers2 = {};
+const document2 = {
+  getElementById: (id) => (nodes2[id] || (nodes2[id] = el2(id))),
+  querySelector: (sel) => (nodes2[sel] || (nodes2[sel] = el2(sel))),
+  createElement: (t) => el2(t),
+  body: { appendChild() {}, removeChild() {} },
+};
+function el2(id) {
+  return {
+    id, value: '', innerHTML: '', textContent: '', style: {}, dataset: {}, files: [], tagName: 'DIV',
+    addEventListener(type, fn) { (handlers2[id + ':' + type] ||= []).push(fn); },
+    click() { (handlers2[id + ':click'] || []).forEach((f) => f({ target: this })); },
+    closest: () => el2('x'), querySelector: () => el2('y'),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+    appendChild() {}, remove() {},
+  };
+}
+const run2 = new Function('window', 'document', 'localStorage', 'alert', 'atob', 'FileReader', 'Blob', 'URL',
+  docx + '\n;\n' + page);
+run2({ print() {} }, document2, localStorage, (m) => alerts.push(m), () => '', class {}, FakeBlob,
+  { createObjectURL: () => 'blob:x', revokeObjectURL() {} });
+if (!nodes2['items'].innerHTML.includes('Проверочная услуга')) {
+  problems.push('после возврата в приложение введённая услуга не вернулась');
+}
+if (nodes2['cardLast'].style.display !== 'block') problems.push('после возврата нет строки последнего документа');
+
 if (problems.length) {
   console.log('НЕ В ПОРЯДКЕ:');
   problems.forEach((p) => console.log(' -', p));
@@ -96,3 +137,4 @@ console.log('страница поднимается: клиенты, номер
 console.log('  номер:', nodes['num'].value, '| дата:', nodes['date'].value);
 console.log('  заказчиков в списке:', (client.innerHTML.match(/<option/g) || []).length);
 console.log('  счёт и акт в Word выгружаются по отдельности, печатная версия содержит оба документа');
+console.log('  в журнале записей:', jrn.length, '| черновик возвращается после перезагрузки');

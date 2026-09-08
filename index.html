@@ -84,6 +84,18 @@
       телефоне нужно один раз.</div>
   </div>
 
+  <div class="card" id="cardLast" style="display:none">
+    <label>Последний документ</label>
+    <div id="lastLine" style="font-weight:600"></div>
+    <button class="btn line" id="openJournal" style="padding:9px;font-size:14px">Все выставленные</button>
+  </div>
+
+  <div class="card" id="cardJournal" style="display:none">
+    <label>Выставленные документы</label>
+    <div id="journalList"></div>
+    <button class="btn line" id="closeJournal" style="padding:9px;font-size:14px">Закрыть</button>
+  </div>
+
   <div class="card" id="cardClient">
     <label for="client">Заказчик</label>
     <select id="client"></select>
@@ -132,6 +144,7 @@
     <div id="stampBox" style="margin-top:10px"></div>
     <input type="file" id="stampFile" accept="image/png,image/jpeg" style="display:none">
     <button class="btn line" id="stampPick" style="padding:9px;font-size:14px">Загрузить скан печати</button>
+    <button class="btn line" id="stampEdit" style="padding:7px;font-size:13px;display:none">поправить скан</button>
     <div class="row" id="stampTools" style="display:none">
       <button class="btn line" id="stampClean" style="padding:9px;font-size:14px">Убрать фон</button>
       <button class="btn line" id="stampCrop" style="padding:9px;font-size:14px">Обрезать</button>
@@ -184,6 +197,100 @@ function saveData(text) {
   return loadData();
 }
 
+
+// ── черновик и журнал ───────────────────────────────────────────────────────
+// Уходишь смотреть Word — телефон выгружает вкладку и всё введённое пропадает.
+// Поэтому черновик пишется на каждое изменение, а выставленные документы
+// складываются в журнал: оттуда можно вернуться и выпустить в другом формате.
+function saveDraft() {
+  try {
+    localStorage.setItem('schet-draft', JSON.stringify({
+      clientKey: $('client').value,
+      ooLine: $('ooLine').value, ooName: $('ooName').value,
+      num: $('num').value, date: $('date').value,
+      items,
+    }));
+  } catch (e) {}
+}
+
+function loadDraft() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem('schet-draft') || 'null'); } catch (e) { return false; }
+  if (!d) return false;
+  if (d.clientKey && (CLIENTS[d.clientKey] || d.clientKey === '__new')) $('client').value = d.clientKey;
+  $('ooLine').value = d.ooLine || '';
+  $('ooName').value = d.ooName || '';
+  if (d.clientKey === '__new') $('oneoff').style.display = 'block';
+  if (d.num) $('num').value = d.num;
+  if (d.date) $('date').value = d.date;
+  if (Array.isArray(d.items) && d.items.length) items = d.items;
+  return true;
+}
+
+function journal() {
+  try { return JSON.parse(localStorage.getItem('schet-journal') || '[]'); }
+  catch (e) { return []; }
+}
+
+function recordIssued(data, kind) {
+  const list = journal();
+  const total = data.items.reduce((s, i) => s + i.qty * i.price, 0);
+  const key = data.number + '|' + data.date.str;
+  const found = list.find((e) => e.key === key);
+  const entry = found || { key };
+  entry.number = data.number;
+  entry.dateStr = data.date.str;
+  entry.dateIso = $('date').value;
+  entry.dateWords = data.date.words;
+  entry.client = data.client;
+  entry.items = data.items;
+  entry.total = total;
+  entry.kinds = Array.from(new Set([...(entry.kinds || []), kind]));
+  if (!found) list.unshift(entry);
+  try { localStorage.setItem('schet-journal', JSON.stringify(list.slice(0, 100))); } catch (e) {}
+  renderLast();
+}
+
+function renderLast() {
+  const list = journal();
+  if (!list.length) { $('cardLast').style.display = 'none'; return; }
+  const e = list[0];
+  $('cardLast').style.display = 'block';
+  $('lastLine').textContent =
+    `№ ${e.number} от ${e.dateStr} · ${e.client.short} · ${S.money(e.total)} ₽`;
+}
+
+function renderJournal() {
+  const list = journal();
+  $('journalList').innerHTML = list.length
+    ? list.map((e, i) => `<div class="item" data-open="${i}" style="cursor:pointer">
+        <b>№ ${e.number} от ${e.dateStr}</b><br>
+        ${hesc(e.client.short)} · ${S.money(e.total)} ₽<br>
+        <span class="hint">${e.items.length} ${e.items.length === 1 ? 'строка' : 'строки'} ·
+          выпущено: ${e.kinds.join(', ')}</span></div>`).join('')
+    : '<div class="hint">Пока пусто. Как выпустишь первый документ, он появится здесь.</div>';
+}
+
+function openFromJournal(i) {
+  const e = journal()[i];
+  if (!e) return;
+  const key = Object.keys(CLIENTS).find((k) => CLIENTS[k].line === e.client.line);
+  if (key) {
+    $('client').value = key;
+    $('oneoff').style.display = 'none';
+  } else {
+    $('client').value = '__new';
+    $('oneoff').style.display = 'block';
+    $('ooLine').value = e.client.line;
+    $('ooName').value = e.client.actName;
+  }
+  $('num').value = e.number;
+  if (e.dateIso) $('date').value = e.dateIso;
+  items = e.items.map((it) => ({ name: it.name, qty: it.qty, price: it.price }));
+  renderItems();
+  saveDraft();
+  $('cardJournal').style.display = 'none';
+}
 
 // ── чистка скана печати ─────────────────────────────────────────────────────
 // Фотография листа даёт серый фон и поля вокруг оттиска. Убираем светлые
@@ -331,8 +438,14 @@ function renderStamp() {
   box.innerHTML = stampData
     ? `<img src="${stampData.dataUrl}" alt="печать" style="max-height:110px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff">`
     : '<div class="hint" style="margin:0">Скан пока не загружен, документы будут с надписью М.П.</div>';
+  // Когда печать уже загружена, лишние кнопки только мешают: оставляем
+  // маленькую «поправить скан», а под ней прячем чистку и обрезку.
   const tools = $('stampTools');
-  if (tools) tools.style.display = stampData ? 'flex' : 'none';
+  if (tools) tools.style.display = (stampData && toolsOpen) ? 'flex' : 'none';
+  $('stampEdit').style.display = stampData ? 'block' : 'none';
+  $('stampPick').textContent = stampData ? 'Загрузить новую печать' : 'Загрузить скан печати';
+  $('stampPick').style.fontSize = stampData ? '13px' : '14px';
+  $('stampPick').style.padding = stampData ? '7px' : '9px';
   $('stampOn').style.background = stampOn ? 'var(--acc)' : '#fff';
   $('stampOn').style.color = stampOn ? '#fff' : 'var(--acc)';
   $('stampOff').style.background = stampOn ? '#fff' : 'var(--acc)';
@@ -477,6 +590,7 @@ function makeWord(kind) {
   download(S.docxBytes(xml, stamp), name,
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   rememberNumber(String(date.d.getFullYear()), number);
+  recordIssued(data, kind === 'акт' ? 'акт' : 'счёт');
   $('numHint').textContent = `Выписан № ${number}. Следующий будет ${number + 1}.`;
 }
 
@@ -488,6 +602,7 @@ $('pdf').addEventListener('click', () => {
   if (!data) return;
   $('paper').innerHTML = paperHtml(data);
   rememberNumber(String(data.date.d.getFullYear()), data.number);
+  recordIssued(data, 'PDF');
   $('numHint').textContent = `Выписан № ${data.number}. Следующий будет ${data.number + 1}.`;
   setTimeout(() => window.print(), 100);
 });
@@ -587,6 +702,7 @@ $('items').addEventListener('input', (e) => {
     if (box) box.textContent = itemName(items[d.car || d.plate || d.from || d.to]);
   }
   updateTotal();
+  saveDraft();
 });
 $('items').addEventListener('click', (e) => {
   const d = e.target.dataset;
@@ -598,6 +714,21 @@ $('items').addEventListener('click', (e) => {
     renderItems();
   }
 });
+['num', 'date', 'ooLine', 'ooName'].forEach((id) => {
+  $(id).addEventListener('input', saveDraft);
+  $(id).addEventListener('change', saveDraft);
+});
+
+$('openJournal').addEventListener('click', () => {
+  renderJournal();
+  $('cardJournal').style.display = 'block';
+});
+$('closeJournal').addEventListener('click', () => { $('cardJournal').style.display = 'none'; });
+$('journalList').addEventListener('click', (e) => {
+  const box = e.target.closest ? e.target.closest('[data-open]') : null;
+  if (box) openFromJournal(Number(box.dataset.open));
+});
+
 $('add').addEventListener('click', () => {
   if (items.length >= 5) { alert('Больше пяти строк в один счёт не ставим'); return; }
   const transport = currentClient().kind === 'перевозка';
@@ -634,6 +765,7 @@ function currentClientKind() {
 
 let cropStart = null;
 let stampOriginal = null;
+let toolsOpen = false;
 
 function setStamp(dataUrl, ext) {
   stampData = { dataUrl, ext: ext || 'png' };
@@ -680,6 +812,7 @@ $('stampBox').addEventListener('click', (e) => {
     .catch((err) => alert('Не получилось: ' + err.message));
 });
 
+$('stampEdit').addEventListener('click', () => { toolsOpen = !toolsOpen; renderStamp(); });
 $('stampPick').addEventListener('click', () => $('stampFile').click());
 $('stampFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -741,7 +874,11 @@ $('client').addEventListener('change', () => {
   $('num').value = suggestNumber();
   $('numHint').textContent = 'Номер подставлен по памяти этого телефона. Если муж только что ' +
     'выписал счёт, посмотри последний файл в чате и поправь.';
+  const restored = loadDraft();
   renderItems();
+  renderLast();
+  if (restored) $('numHint').textContent = 'Вернула то, что было введено до ухода из приложения.';
+  ['client'].forEach((id) => $(id).addEventListener('change', saveDraft));
 })();
 })();
 </script>
