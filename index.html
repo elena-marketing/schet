@@ -24,7 +24,8 @@
   label{display:block;font-size:12px;color:var(--dim);margin:0 0 4px}
   input,select,textarea{width:100%;padding:10px 11px;border:1px solid var(--line);
     border-radius:10px;font-size:16px;background:#fff;color:var(--ink);font-family:inherit}
-  textarea{min-height:56px;resize:vertical}
+  textarea{min-height:92px;resize:vertical;line-height:1.4}
+  textarea.small{min-height:64px}
   .row{display:flex;gap:8px}
   .row>*{flex:1}
   .row .w90{flex:0 0 92px}
@@ -59,8 +60,8 @@
   #paper .b td,#paper .b th{border:1px solid #000;padding:4px 6px;font-size:11px}
   #paper h2{font-size:16px;text-align:center;margin:14px 0 10px}
   #paper .party{font-size:11px;margin:3px 0}
-  #paper .tot{margin-top:6px;font-size:11px}
-  #paper .tot td{padding:2px 6px}
+  #paper .tot{margin-top:6px;font-size:11px;margin-left:auto;width:52%}
+  #paper .tot td{padding:2px 6px;white-space:nowrap}
   #paper .words{margin-top:10px;font-size:11.5px;font-weight:700}
   #paper .sign{margin-top:26px;font-size:11.5px;line-height:2.4}
   #paper .doc{font-family:Arial,Helvetica,sans-serif;color:#000}
@@ -87,10 +88,17 @@
     <label for="client">Заказчик</label>
     <select id="client"></select>
     <div id="oneoff" style="display:none;margin-top:8px">
-      <label for="ooLine">Строка заказчика: ИНН, название, адрес</label>
+      <label for="ooPaste">Вставь реквизиты как есть, я разберу</label>
+      <textarea id="ooPaste" class="small"
+        placeholder="ООО «Ромашка», ИНН 7701234567, КПП 770101001, 127006, г. Москва, ул. Долгоруковская, д. 5"></textarea>
+      <button class="btn line" id="ooParse" style="padding:9px;font-size:14px">Разобрать</button>
+      <label for="ooLine" style="margin-top:10px">Строка заказчика в документе</label>
       <textarea id="ooLine" placeholder="ИНН 7100000000 КПП-, ООО «Название», 300000, г. Тула, ул. Ленина, д. 1"></textarea>
       <label for="ooName" style="margin-top:8px">Короткое имя для акта</label>
       <input id="ooName" placeholder="ООО «Название»">
+      <button class="btn line" id="ooSave" style="padding:9px;font-size:14px">Запомнить этого клиента</button>
+      <div class="hint">Разового не сохраняй — он не будет мешать в списке. Если реквизиты
+        только на скриншоте, пришли его ВАЛЛ-И, она добавит клиента и вернёт обновлённые данные.</div>
     </div>
   </div>
 
@@ -155,10 +163,61 @@ function saveData(text) {
   return loadData();
 }
 
+
+// ── разбор реквизитов из вставленного текста ────────────────────────────────
+function parseRequisites(text) {
+  // Текст приходит как попало: из счёта, из карточки контрагента, из письма.
+  // Сначала вынимаем номера, потом по остатку ищем название и адрес.
+  let t = text.replace(/\s+/g, ' ').trim();
+
+  const pair = t.match(/ИНН\s*\/\s*КПП[\s:]*([0-9]{10,12})\s*\/\s*([0-9]{9})/i);
+  let inn = pair ? pair[1] : '';
+  let kpp = pair ? pair[2] : '';
+  if (pair) t = t.replace(pair[0], ' ');
+
+  if (!inn) {
+    const m = t.match(/ИНН[\s:]*([0-9]{10,12})/i);
+    if (m) { inn = m[1]; t = t.replace(m[0], ' '); }
+  }
+  if (!kpp) {
+    const m = t.match(/КПП[\s:]*([0-9]{9})/i);
+    if (m) { kpp = m[1]; t = t.replace(m[0], ' '); }
+  }
+  let ogrnip = '';
+  const og = t.match(/ОГРНИП[\s:]*([0-9]{15})/i);
+  if (og) { ogrnip = og[1]; t = t.replace(og[0], ' '); }
+  t = t.replace(/КПП\s*[-–—]/gi, ' ').replace(/\s+/g, ' ').trim();
+
+  // адрес начинается с почтового индекса
+  const idx = t.search(/\b[0-9]{6}\b/);
+  const address = idx >= 0 ? t.slice(idx).replace(/^[,;\s]+/, '').trim() : '';
+  let name = (idx >= 0 ? t.slice(0, idx) : t).replace(/[,;\s]+$/, '').replace(/^[,;\s]+/, '').trim();
+  if (!inn && !name) {
+    const any = text.match(/\b([0-9]{12}|[0-9]{10})\b/);
+    if (any) inn = any[1];
+  }
+
+  let line;
+  if (kpp) line = `ИНН/КПП ${inn}/${kpp} ${name} ${address}`;
+  else if (ogrnip) line = `ИНН ${inn}, ОГРНИП ${ogrnip} ${name}, ${address}`;
+  else line = `ИНН ${inn} КПП-, ${name}, ${address}`;
+  line = line.replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/,\s*$/, '').trim();
+  return { inn, kpp, ogrnip, name, address, line };
+}
+
+function saveClient(key, data) {
+  const raw = localStorage.getItem('schet-data');
+  const d = raw ? JSON.parse(raw) : { isp: ISPDATA, clients: {} };
+  d.clients[key] = data;
+  localStorage.setItem('schet-data', JSON.stringify(d));
+}
+
 const KONS = 'Услуги по оказанию консультационных и информационных услуг (без договора)';
 const PEREVOZ = 'Перевозка автомобиля , гос. номер , от  до , без договора';
 
 const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t == null ? '' : t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const S = window.SCHET;
 let items = [{ name: KONS, qty: 1, price: 0 }];
 
@@ -195,19 +254,53 @@ function currentClient() {
   return CLIENTS[k];
 }
 
+function itemName(it) {
+  // Для перевозки собираем предложение из полей: на телефоне так быстрее,
+  // чем править длинную строку внутри текстового поля.
+  if (it.mode !== 'перевозка') return it.name;
+  const parts = [];
+  parts.push('Перевозка автомобиля' + (it.car ? ' ' + it.car : ''));
+  if (it.plate) parts.push('гос. номер ' + it.plate);
+  if (it.from || it.to) parts.push('от ' + (it.from || '—') + ' до ' + (it.to || '—'));
+  parts.push('без договора');
+  return parts.join(', ');
+}
+
 function renderItems() {
-  $('items').innerHTML = items.map((it, i) => `
-    <div class="item">
-      <h3><span>Строка ${i + 1}</span>
-        ${items.length > 1 ? `<button class="del" data-del="${i}">убрать</button>` : ''}</h3>
-      <textarea data-name="${i}" placeholder="Что сделано">${it.name.replace(/</g, '&lt;')}</textarea>
-      <div class="row" style="margin-top:8px">
+  $('items').innerHTML = items.map((it, i) => {
+    const head = `<h3><span>Строка ${i + 1}</span>
+        ${items.length > 1 ? `<button class="del" data-del="${i}">убрать</button>` : ''}</h3>`;
+    const money = `<div class="row" style="margin-top:8px">
         <div class="w90"><label>Кол-во</label>
           <input data-qty="${i}" type="number" inputmode="decimal" step="0.01" value="${it.qty}"></div>
         <div><label>Цена за штуку, ₽</label>
           <input data-price="${i}" type="number" inputmode="decimal" step="0.01" value="${it.price || ''}"></div>
-      </div>
-    </div>`).join('');
+      </div>`;
+    const swap = `<button class="btn line" data-mode="${i}" style="margin-top:8px;padding:9px;font-size:14px">
+        ${it.mode === 'перевозка' ? 'ввести своим текстом' : 'заполнить как перевозку'}</button>`;
+
+    if (it.mode === 'перевозка') {
+      return `<div class="item">${head}
+        <div class="row">
+          <div><label>Марка и модель</label>
+            <input data-car="${i}" value="${esc(it.car || '')}" placeholder="Лада Гранта"></div>
+          <div><label>Гос. номер</label>
+            <input data-plate="${i}" value="${esc(it.plate || '')}" placeholder="А123ВС71"></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div><label>Откуда</label>
+            <input data-from="${i}" value="${esc(it.from || '')}" placeholder="г. Тула, ул. Пролетарская, 24"></div>
+          <div><label>Куда</label>
+            <input data-to="${i}" value="${esc(it.to || '')}" placeholder="г. Москва, ул. Рязанская, 28Б"></div>
+        </div>
+        <div class="hint">${esc(itemName(it))}</div>
+        ${money}${swap}</div>`;
+    }
+    return `<div class="item">${head}
+      <label>Что сделано</label>
+      <textarea data-name="${i}" placeholder="Опиши услугу">${esc(it.name)}</textarea>
+      ${money}${swap}</div>`;
+  }).join('');
   updateTotal();
 }
 
@@ -233,7 +326,7 @@ function collect() {
   const client = currentClient();
   if (!client.line) { alert('Заполни строку заказчика'); return null; }
   const clean = items
-    .map((i) => ({ name: i.name.trim(), qty: Number(i.qty) || 1, price: Number(i.price) || 0 }))
+    .map((i) => ({ name: itemName(i).trim(), qty: Number(i.qty) || 1, price: Number(i.price) || 0 }))
     .filter((i) => i.name && i.price > 0);
   if (!clean.length) { alert('Добавь хотя бы одну услугу с ценой'); return null; }
   const number = Number($('num').value) || suggestNumber();
@@ -348,30 +441,67 @@ function paperHtml({ client, items: list, number, date }) {
 // ── обработчики ──────────────────────────────────────────────────────────────
 $('items').addEventListener('input', (e) => {
   const t = e.target;
-  if (t.dataset.name !== undefined) items[t.dataset.name].name = t.value;
-  if (t.dataset.qty !== undefined) items[t.dataset.qty].qty = t.value;
-  if (t.dataset.price !== undefined) items[t.dataset.price].price = t.value;
+  const d = t.dataset;
+  ['name', 'qty', 'price', 'car', 'plate', 'from', 'to'].forEach((key) => {
+    if (d[key] !== undefined) items[d[key]][key] = t.value;
+  });
+  if (d.car !== undefined || d.plate !== undefined || d.from !== undefined || d.to !== undefined) {
+    const box = t.closest('.item').querySelector('.hint');
+    if (box) box.textContent = itemName(items[d.car || d.plate || d.from || d.to]);
+  }
   updateTotal();
 });
 $('items').addEventListener('click', (e) => {
-  const i = e.target.dataset.del;
-  if (i === undefined) return;
-  items.splice(Number(i), 1);
-  renderItems();
+  const d = e.target.dataset;
+  if (d.del !== undefined) { items.splice(Number(d.del), 1); renderItems(); return; }
+  if (d.mode !== undefined) {
+    const it = items[d.mode];
+    if (it.mode === 'перевозка') { it.mode = 'текст'; it.name = itemName(it); }
+    else { it.mode = 'перевозка'; }
+    renderItems();
+  }
 });
 $('add').addEventListener('click', () => {
   if (items.length >= 5) { alert('Больше пяти строк в один счёт не ставим'); return; }
-  const kind = (currentClient().kind === 'перевозка') ? PEREVOZ : KONS;
-  items.push({ name: kind, qty: 1, price: 0 });
+  const transport = currentClient().kind === 'перевозка';
+  items.push(transport ? { mode: 'перевозка', qty: 1, price: 0 }
+                       : { name: KONS, qty: 1, price: 0 });
   renderItems();
 });
 $('preset1').addEventListener('click', () => { items = [{ name: KONS, qty: 1, price: 0 }]; renderItems(); });
-$('preset2').addEventListener('click', () => { items = [{ name: PEREVOZ, qty: 1, price: 0 }]; renderItems(); });
+$('preset2').addEventListener('click', () => { items = [{ mode: 'перевозка', qty: 1, price: 0 }]; renderItems(); });
+$('ooParse').addEventListener('click', () => {
+  const r = parseRequisites($('ooPaste').value);
+  if (!r.inn && !r.name) { alert('Не нашла ни ИНН, ни названия. Проверь текст.'); return; }
+  $('ooLine').value = r.line;
+  if (!$('ooName').value) $('ooName').value = r.name;
+});
+
+$('ooSave').addEventListener('click', () => {
+  const line = $('ooLine').value.trim();
+  const name = $('ooName').value.trim();
+  if (!line || !name) { alert('Заполни строку заказчика и короткое имя'); return; }
+  const key = name.toLowerCase().replace(/[^а-яa-z0-9]+/gi, '-').replace(/^-|-$/g, '');
+  const kind = currentClientKind();
+  saveClient(key, { short: name, line, actName: name, kind });
+  CLIENTS[key] = { short: name, line, actName: name, kind };
+  fillClients();
+  $('client').value = key;
+  $('oneoff').style.display = 'none';
+  alert('Клиент сохранён на этом телефоне');
+});
+
+function currentClientKind() {
+  return items.some((i) => i.mode === 'перевозка') ? 'перевозка' : 'консультации';
+}
+
 $('client').addEventListener('change', () => {
   const isNew = $('client').value === '__new';
   $('oneoff').style.display = isNew ? 'block' : 'none';
   if (!isNew && items.length === 1 && !Number(items[0].price)) {
-    items[0].name = CLIENTS[$('client').value].kind === 'перевозка' ? PEREVOZ : KONS;
+    items[0] = CLIENTS[$('client').value].kind === 'перевозка'
+      ? { mode: 'перевозка', qty: 1, price: 0 }
+      : { name: KONS, qty: 1, price: 0 };
     renderItems();
   }
 });

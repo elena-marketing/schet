@@ -162,13 +162,22 @@ const RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const DOC_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
 
-function p(text, opts = {}) {
-  const { bold, size = 20, align, space = 0 } = opts;
-  const rPr = `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>` +
+function runProps(bold, size) {
+  return `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>` +
     (bold ? '<w:b/>' : '') + `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>`;
+}
+
+function p(text, opts = {}) {
+  const { bold, size = 20, align, space = 0, lead } = opts;
+  const rPr = runProps(bold, size);
   const pPr = `<w:pPr><w:spacing w:before="${space}" w:after="${space}" w:line="240" w:lineRule="auto"/>` +
     (align ? `<w:jc w:val="${align}"/>` : '') + rPr + '</w:pPr>';
-  return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${esc(text)}</w:t></w:r></w:p>`;
+  // lead — начало строки жирным: «Заказчик:» выделяется, а реквизиты идут обычным
+  const runs = lead
+    ? `<w:r>${runProps(true, size)}<w:t xml:space="preserve">${esc(lead)}</w:t></w:r>` +
+      `<w:r>${rPr}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`
+    : `<w:r>${rPr}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
+  return `<w:p>${pPr}${runs}</w:p>`;
 }
 
 function tc(text, width, opts = {}) {
@@ -240,13 +249,13 @@ function itemsTable(items, isAct) {
 function totalsBlock(total, withPayLine = true) {
   // В акте строки «Всего к оплате» нет: акт подтверждает работу, а не требует денег.
   const rows = [
-    tr([tc('', 7400, { align: 'right' }), tc('Итого:', 1100, { bold: true, align: 'right' }),
-        tc(money(total), 1100, { bold: true, align: 'right' })]),
-    tr([tc('', 7400), tc('Без налога (НДС)', 1100, { align: 'right' }), tc('', 1100)]),
+    tr([tc('', 6700, { align: 'right' }), tc('Итого:', 1700, { bold: true, align: 'right' }),
+        tc(money(total), 1200, { bold: true, align: 'right' })]),
+    tr([tc('', 6700), tc('Без налога (НДС)', 1700, { align: 'right' }), tc('', 1200)]),
   ];
   if (withPayLine) {
-    rows.push(tr([tc('', 7400), tc('Всего к оплате:', 1100, { bold: true, align: 'right' }),
-      tc(money(total), 1100, { bold: true, align: 'right' })]));
+    rows.push(tr([tc('', 6700), tc('Всего к оплате:', 1700, { bold: true, align: 'right' }),
+      tc(money(total), 1200, { bold: true, align: 'right' })]));
   }
   return table(rows, { borders: false });
 }
@@ -258,8 +267,9 @@ function buildInvoice({ number, dateStr, client, items }) {
     p(''),
     p(`СЧЕТ № ${number} от ${dateStr}г.`, { bold: true, size: 28, align: 'center' }),
     p(''),
-    p(`Исполнитель: ИНН ${ISP.inn}, КПП-, ${ISP.name}, ${ISP.address}, тел. ${ISP.phone}`),
-    p(`Заказчик: ${client.line}`),
+    p(` ИНН ${ISP.inn}, КПП-, ${ISP.name}, ${ISP.address}, тел. ${ISP.phone}`,
+      { lead: 'Исполнитель:' }),
+    p(' ' + client.line, { lead: 'Заказчик:' }),
     p(''),
     itemsTable(items, false),
     totalsBlock(total),
@@ -285,8 +295,8 @@ function buildAct({ number, dateStr, dateWords, client, items }) {
   const body = [
     p(`АКТ № ${number} от ${dateWords}`, { bold: true, size: 26, align: 'center' }),
     p(''),
-    p(`Исполнитель: ${ISP.shortName}`),
-    p(`Заказчик: ${client.actName}`),
+    p(' ' + ISP.shortName, { lead: 'Исполнитель:' }),
+    p(' ' + client.actName, { lead: 'Заказчик:' }),
     p(''),
     itemsTable(items, true),
     totalsBlock(total, false),
