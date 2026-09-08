@@ -111,7 +111,7 @@ function zip(files) {
 
   for (const f of files) {
     const nameBytes = enc.encode(f.name);
-    const data = enc.encode(f.text);
+    const data = f.bytes ? f.bytes : enc.encode(f.text);
     const crc = crc32(data);
     const local = [].concat(
       u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
@@ -147,20 +147,74 @@ function zip(files) {
 }
 
 // ── разметка Word ────────────────────────────────────────────────────────────
-const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+function contentTypes(imageExt) {
+  const extra = imageExt
+    ? `<Default Extension="${imageExt}" ContentType="image/${imageExt === 'jpg' ? 'jpeg' : imageExt}"/>`
+    : '';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="xml" ContentType="application/xml"/>${extra}
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`;
+}
 
 const RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`;
 
-const DOC_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
+function docRels(imageName) {
+  const rel = imageName
+    ? `<Relationship Id="rIdImg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${imageName}"/>`
+    : '';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel}</Relationships>`;
+}
+
+// размеры картинки нужны, чтобы печать не сплющило: читаем их прямо из файла
+function imageSize(bytes) {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) {           // PNG: IHDR идёт первым
+    const dv = new DataView(bytes.buffer, bytes.byteOffset);
+    return { w: dv.getUint32(16), h: dv.getUint32(20) };
+  }
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) {           // JPEG: ищем маркер SOF
+    let i = 2;
+    while (i < bytes.length - 9) {
+      if (bytes[i] !== 0xFF) { i++; continue; }
+      const m = bytes[i + 1];
+      const len = (bytes[i + 2] << 8) | bytes[i + 3];
+      if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+        return { h: (bytes[i + 5] << 8) | bytes[i + 6], w: (bytes[i + 7] << 8) | bytes[i + 8] };
+      }
+      i += 2 + len;
+    }
+  }
+  return { w: 600, h: 600 };
+}
+
+// Печать со скана: ширина 5 см, высота по пропорции.
+function stampRun(bytes) {
+  const { w, h } = imageSize(bytes);
+  const cx = 1800000;
+  const cy = Math.round(cx * h / w);
+  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"
+ xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="7" name="Печать"/>
+<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<pic:nvPicPr><pic:cNvPr id="7" name="Печать"/><pic:cNvPicPr/></pic:nvPicPr>
+<pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdImg"/>
+<a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>
+</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+
+function stampParagraph(bytes) {
+  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes)}</w:p>`;
+}
 
 function runProps(bold, size) {
   return `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>` +
@@ -260,7 +314,7 @@ function totalsBlock(total, withPayLine = true) {
   return table(rows, { borders: false });
 }
 
-function buildInvoice({ number, dateStr, client, items }) {
+function buildInvoice({ number, dateStr, client, items, stamp }) {
   const total = items.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
   const body = [
     bankBlock(),
@@ -282,12 +336,12 @@ function buildInvoice({ number, dateStr, client, items }) {
     p(''),
     p(`Бухгалтер       _____________________ (${ISP.signShort})`),
     p(''),
-    p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes) : p('М.П.'),
   ].join('');
   return documentXml(body);
 }
 
-function buildAct({ number, dateStr, dateWords, client, items }) {
+function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
   const total = items.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
   let words = rublesInWords(total);
   words = words.charAt(0).toLowerCase() + words.slice(1);
@@ -309,7 +363,7 @@ function buildAct({ number, dateStr, dateWords, client, items }) {
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`),
-    p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes) : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),
@@ -318,15 +372,19 @@ function buildAct({ number, dateStr, dateWords, client, items }) {
   return documentXml(body);
 }
 
-function docxBytes(documentXmlText) {
-  return zip([
-    { name: '[Content_Types].xml', text: CONTENT_TYPES },
+function docxBytes(documentXmlText, image) {
+  const ext = image ? image.ext : null;
+  const imgName = image ? 'stamp.' + ext : null;
+  const files = [
+    { name: '[Content_Types].xml', text: contentTypes(ext) },
     { name: '_rels/.rels', text: RELS },
-    { name: 'word/_rels/document.xml.rels', text: DOC_RELS },
+    { name: 'word/_rels/document.xml.rels', text: docRels(imgName) },
     { name: 'word/document.xml', text: documentXmlText },
-  ]);
+  ];
+  if (image) files.push({ name: 'word/media/' + imgName, bytes: image.bytes });
+  return zip(files);
 }
 
-const API = { get ISP() { return ISP; }, setIsp, MONTHS, rublesInWords, money, buildInvoice, buildAct, docxBytes, zip };
+const API = { get ISP() { return ISP; }, setIsp, imageSize, MONTHS, rublesInWords, money, buildInvoice, buildAct, docxBytes, zip };
 if (typeof window !== 'undefined') window.SCHET = API;
 if (typeof globalThis !== 'undefined') globalThis.SCHET = API;

@@ -123,6 +123,19 @@
     <div class="total" id="total">0,00 ₽</div>
   </div>
 
+  <div class="card" id="cardStamp">
+    <label>Печать и подпись</label>
+    <div class="row">
+      <button class="btn line" id="stampOn" style="margin-top:0">С печатью</button>
+      <button class="btn line" id="stampOff" style="margin-top:0">Без печати</button>
+    </div>
+    <div id="stampBox" style="margin-top:10px"></div>
+    <input type="file" id="stampFile" accept="image/png,image/jpeg" style="display:none">
+    <button class="btn line" id="stampPick" style="padding:9px;font-size:14px">Загрузить скан печати</button>
+    <div class="hint">Скан хранится только в этом телефоне. Никуда не отправляется и на сайте
+      его нет: подпись с печатью — вещь, которой чужие руки касаться не должны.</div>
+  </div>
+
   <button class="btn sec" id="preset1">Заготовка: консультации</button>
   <button class="btn sec" id="preset2">Заготовка: перевозка</button>
 </main>
@@ -220,6 +233,41 @@ const esc = (t) => String(t == null ? '' : t)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const S = window.SCHET;
 let items = [{ name: KONS, qty: 1, price: 0 }];
+let stampData = null;      // {dataUrl, ext}
+let stampOn = false;
+
+function loadStamp() {
+  try {
+    const raw = localStorage.getItem('schet-stamp');
+    stampData = raw ? JSON.parse(raw) : null;
+    stampOn = localStorage.getItem('schet-stamp-on') === '1' && !!stampData;
+  } catch (e) { stampData = null; stampOn = false; }
+}
+
+function bytesFromDataUrl(url) {
+  const b64 = url.slice(url.indexOf(',') + 1);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function stampForDoc() {
+  if (!stampOn || !stampData) return null;
+  return { bytes: bytesFromDataUrl(stampData.dataUrl), ext: stampData.ext };
+}
+
+function renderStamp() {
+  const box = $('stampBox');
+  if (!box) return;
+  box.innerHTML = stampData
+    ? `<img src="${stampData.dataUrl}" alt="печать" style="max-height:110px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff">`
+    : '<div class="hint" style="margin:0">Скан пока не загружен, документы будут с надписью М.П.</div>';
+  $('stampOn').style.background = stampOn ? 'var(--acc)' : '#fff';
+  $('stampOn').style.color = stampOn ? '#fff' : 'var(--acc)';
+  $('stampOff').style.background = stampOn ? '#fff' : 'var(--acc)';
+  $('stampOff').style.color = stampOn ? 'var(--acc)' : '#fff';
+}
 
 // ── номер: помним последний по годам, но всегда даём поправить ───────────────
 function lastNumbers() {
@@ -346,11 +394,12 @@ $('word').addEventListener('click', () => {
   const data = collect();
   if (!data) return;
   const { client, items: list, number, date } = data;
-  const inv = S.buildInvoice({ number, dateStr: date.str, client, items: list });
-  const act = S.buildAct({ number, dateStr: date.str, dateWords: date.words, client, items: list });
-  download(S.docxBytes(inv), `Счет №${number} от ${date.file} ${client.short}.docx`,
+  const stamp = stampForDoc();
+  const inv = S.buildInvoice({ number, dateStr: date.str, client, items: list, stamp });
+  const act = S.buildAct({ number, dateStr: date.str, dateWords: date.words, client, items: list, stamp });
+  download(S.docxBytes(inv, stamp), `Счет №${number} от ${date.file} ${client.short}.docx`,
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  setTimeout(() => download(S.docxBytes(act), `Акт №${number} от ${date.file} ${client.short}.docx`,
+  setTimeout(() => download(S.docxBytes(act, stamp), `Акт №${number} от ${date.file} ${client.short}.docx`,
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), 600);
   rememberNumber(String(date.d.getFullYear()), number);
   $('numHint').textContent = `Выписан № ${number}. Следующий будет ${number + 1}.`;
@@ -366,6 +415,12 @@ $('pdf').addEventListener('click', () => {
 });
 
 // ── бумажный вид: он же уходит в PDF через печать ────────────────────────────
+function stampImg() {
+  return (stampOn && stampData)
+    ? `<img src="${stampData.dataUrl}" alt="" style="height:110px;margin-top:6px">`
+    : '<div style="margin-top:14px;font-size:11px">М.П.</div>';
+}
+
 function paperHtml({ client, items: list, number, date }) {
   const I = S.ISP;
   const total = list.reduce((s, i) => s + i.qty * i.price, 0);
@@ -411,7 +466,7 @@ function paperHtml({ client, items: list, number, date }) {
     <div class="words">${words}</div>
     <div class="sign">Руководитель &nbsp;_____________________ (${I.signShort})<br>
       Бухгалтер &nbsp;&nbsp;&nbsp;&nbsp;_____________________ (${I.signShort})</div>
-    <div style="margin-top:14px;font-size:11px">М.П.</div>
+    ${stampImg()}
   </div>
 
   <div class="doc">
@@ -432,7 +487,8 @@ function paperHtml({ client, items: list, number, date }) {
     <div style="margin-top:10px;font-size:11px">Вышеперечисленные услуги выполнены полностью и в срок.
       Заказчик претензий по объему, качеству и срокам оказания услуг не имеет.</div>
     <div class="sign">Индивидуальный предприниматель<br>
-      _________________________${I.sign}<br>М.П.</div>
+      _________________________${I.sign}</div>
+    ${stampImg()}
     <div class="sign">Грузоотправитель/грузополучатель<br>
       _________________/_____________<br>М.П.</div>
   </div>`;
@@ -495,6 +551,29 @@ function currentClientKind() {
   return items.some((i) => i.mode === 'перевозка') ? 'перевозка' : 'консультации';
 }
 
+$('stampPick').addEventListener('click', () => $('stampFile').click());
+$('stampFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    stampData = { dataUrl: reader.result, ext: file.type === 'image/png' ? 'png' : 'jpg' };
+    try { localStorage.setItem('schet-stamp', JSON.stringify(stampData)); }
+    catch (err) { alert('Картинка слишком большая, урежь её или сфотографируй мельче'); return; }
+    stampOn = true;
+    localStorage.setItem('schet-stamp-on', '1');
+    renderStamp();
+  };
+  reader.readAsDataURL(file);
+});
+$('stampOn').addEventListener('click', () => {
+  if (!stampData) { alert('Сначала загрузи скан печати'); return; }
+  stampOn = true; localStorage.setItem('schet-stamp-on', '1'); renderStamp();
+});
+$('stampOff').addEventListener('click', () => {
+  stampOn = false; localStorage.setItem('schet-stamp-on', '0'); renderStamp();
+});
+
 $('client').addEventListener('change', () => {
   const isNew = $('client').value === '__new';
   $('oneoff').style.display = isNew ? 'block' : 'none';
@@ -508,7 +587,7 @@ $('client').addEventListener('change', () => {
 
 (function init() {
   const ready = loadData();
-  const blocks = ['cardClient', 'cardDoc', 'cardItems', 'preset1', 'preset2'];
+  const blocks = ['cardClient', 'cardDoc', 'cardItems', 'cardStamp', 'preset1', 'preset2'];
   if (!ready) {
     $('setup').style.display = 'block';
     blocks.forEach((id) => { const el = $(id); if (el) el.style.display = 'none'; });
@@ -525,6 +604,8 @@ $('client').addEventListener('change', () => {
   if (!ready) return;
 
   fillClients();
+  loadStamp();
+  renderStamp();
   if (ISPDATA && ISPDATA.shortName) $('who').textContent = ISPDATA.shortName + ' · документы делаются в телефоне';
   const t = new Date();
   $('date').value = [t.getFullYear(), String(t.getMonth() + 1).padStart(2, '0'),
