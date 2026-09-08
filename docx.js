@@ -198,7 +198,7 @@ function imageSize(bytes) {
 // up — насколько поднять её над своей строкой, долями от высоты картинки.
 function stampRun(bytes, up) {
   const { w, h } = imageSize(bytes);
-  const cx = 1800000;
+  const cx = 1550000;
   const cy = Math.round(cx * h / w);
   const dy = -Math.round(cy * (up === undefined ? 0.7 : up));
   return `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0"
@@ -343,7 +343,7 @@ function buildInvoice({ number, dateStr, client, items, stamp }) {
     p(`Руководитель _____________________ (${ISP.signShort})`),
     p(''),
     p(`Бухгалтер       _____________________ (${ISP.signShort})`),
-    stamp ? stampParagraph(stamp.bytes, 0.95) : p(''),
+    stamp ? stampParagraph(stamp.bytes, 1.25) : p(''),
     stamp ? p('') : p('М.П.'),
   ].join('');
   return documentXml(body);
@@ -371,7 +371,7 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`),
-    stamp ? stampParagraph(stamp.bytes, 0.85) : p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes, 1.1) : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),

@@ -32,6 +32,10 @@
   .row .w120{flex:0 0 120px}
   .item{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;
     background:#fbfcfd}
+  .jrow{display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+    padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+  .jrow:last-child{border-bottom:0}
+  .jsum{white-space:nowrap;font-weight:600}
   .item h3{margin:0 0 8px;font-size:13px;color:var(--dim);font-weight:600;
     display:flex;justify-content:space-between;align-items:center}
   .del{color:#b91c1c;font-size:13px;background:none;border:0;padding:2px 6px;width:auto}
@@ -96,6 +100,14 @@
     <button class="btn line" id="closeJournal" style="padding:9px;font-size:14px">Закрыть</button>
   </div>
 
+  <div class="card" id="cardPresets">
+    <label>С чего начать</label>
+    <div class="row">
+      <button class="btn sec" id="preset1" style="margin-top:0">Консультации</button>
+      <button class="btn sec" id="preset2" style="margin-top:0">Перевозка</button>
+    </div>
+  </div>
+
   <div class="card" id="cardClient">
     <label for="client">Заказчик</label>
     <select id="client"></select>
@@ -155,8 +167,6 @@
       его нет: подпись с печатью — вещь, которой чужие руки касаться не должны.</div>
   </div>
 
-  <button class="btn sec" id="preset1">Заготовка: консультации</button>
-  <button class="btn sec" id="preset2">Заготовка: перевозка</button>
 </main>
 
 <div class="bar">
@@ -263,11 +273,9 @@ function renderLast() {
 function renderJournal() {
   const list = journal();
   $('journalList').innerHTML = list.length
-    ? list.map((e, i) => `<div class="item" data-open="${i}" style="cursor:pointer">
-        <b>№ ${e.number} от ${e.dateStr}</b><br>
-        ${hesc(e.client.short)} · ${S.money(e.total)} ₽<br>
-        <span class="hint">${e.items.length} ${e.items.length === 1 ? 'строка' : 'строки'} ·
-          выпущено: ${e.kinds.join(', ')}</span></div>`).join('')
+    ? list.map((e, i) => `<div class="jrow" data-open="${i}">
+        <span><b>№ ${e.number}</b> от ${e.dateStr} · ${hesc(e.client.short)}</span>
+        <span class="jsum">${S.money(e.total)} ₽</span></div>`).join('')
     : '<div class="hint">Пока пусто. Как выпустишь первый документ, он появится здесь.</div>';
 }
 
@@ -608,9 +616,12 @@ $('pdf').addEventListener('click', () => {
 });
 
 // ── бумажный вид: он же уходит в PDF через печать ────────────────────────────
-function stampImg() {
+function stampImg(up) {
+  // Оттиск должен лечь на строки подписи, поэтому поднимаем его отрицательным
+  // отступом и уводим под текст.
   return (stampOn && stampData)
-    ? `<img src="${stampData.dataUrl}" alt="" style="height:110px;margin-top:6px">`
+    ? `<img src="${stampData.dataUrl}" alt="" style="height:104px;display:block;
+        margin:${up || -70}px 0 0 44px;position:relative;z-index:-1">`
     : '<div style="margin-top:14px;font-size:11px">М.П.</div>';
 }
 
@@ -681,7 +692,7 @@ function paperHtml({ client, items: list, number, date }) {
       Заказчик претензий по объему, качеству и срокам оказания услуг не имеет.</div>
     <div class="sign">Индивидуальный предприниматель<br>
       _________________________${I.sign}</div>
-    ${stampImg()}
+    ${stampImg(-64)}
     <div class="sign">Грузоотправитель/грузополучатель<br>
       _________________/_____________<br>М.П.</div>
   </div>`;
@@ -848,7 +859,7 @@ $('client').addEventListener('change', () => {
 
 (function init() {
   const ready = loadData();
-  const blocks = ['cardClient', 'cardDoc', 'cardItems', 'cardStamp', 'preset1', 'preset2'];
+  const blocks = ['cardPresets', 'cardClient', 'cardDoc', 'cardItems', 'cardStamp'];
   if (!ready) {
     $('setup').style.display = 'block';
     blocks.forEach((id) => { const el = $(id); if (el) el.style.display = 'none'; });

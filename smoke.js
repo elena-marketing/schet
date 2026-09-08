@@ -100,6 +100,20 @@ if (!nodes['cardLast'] || nodes['cardLast'].style.display !== 'block') {
 }
 if (!store['schet-draft']) problems.push('черновик не сохранён');
 
+// журнал должен быть компактным, без слов про формат
+(handlers['openJournal:click'] || []).forEach((f) => f({ target: nodes['openJournal'] }));
+const jhtml = nodes['journalList'].innerHTML;
+if (!jhtml.includes('jrow')) problems.push('журнал не в компактном виде');
+if (jhtml.includes('выпущено')) problems.push('в журнале осталась пометка про формат');
+if (!jhtml.includes('₽')) problems.push('в журнале нет суммы');
+// заготовки должны стоять выше блока с заказчиком — проверяем по самой разметке
+const posPresets = html.indexOf('id="cardPresets"');
+const posClient = html.indexOf('id="cardClient"');
+if (posPresets < 0) problems.push('нет блока с заготовками');
+else if (posPresets > posClient) problems.push('заготовки стоят ниже блока с заказчиком');
+if (!/id="preset1"[\s\S]{0,200}Консультации/.test(html)) problems.push('нет кнопки заготовки консультаций');
+if (!/id="preset2"[\s\S]{0,200}Перевозка/.test(html)) problems.push('нет кнопки заготовки перевозки');
+
 // вторая загрузка страницы: черновик должен вернуться
 const nodes2 = {};
 const handlers2 = {};
