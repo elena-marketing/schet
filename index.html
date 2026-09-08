@@ -151,6 +151,7 @@
 
 <script src="docx.js"></script>
 <script>
+(function () {
 // Данные хранятся только в телефоне: страница лежит на открытом хостинге,
 // а реквизиты и адреса клиентов туда выкладывать нельзя.
 let CLIENTS = {};
@@ -229,7 +230,7 @@ const KONS = 'Услуги по оказанию консультационны�
 const PEREVOZ = 'Перевозка автомобиля , гос. номер , от  до , без договора';
 
 const $ = (id) => document.getElementById(id);
-const esc = (t) => String(t == null ? '' : t)
+const hesc = (t) => String(t == null ? '' : t)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const S = window.SCHET;
 let items = [{ name: KONS, qty: 1, price: 0 }];
@@ -331,22 +332,22 @@ function renderItems() {
       return `<div class="item">${head}
         <div class="row">
           <div><label>Марка и модель</label>
-            <input data-car="${i}" value="${esc(it.car || '')}" placeholder="Лада Гранта"></div>
+            <input data-car="${i}" value="${hesc(it.car || '')}" placeholder="Лада Гранта"></div>
           <div><label>Гос. номер</label>
-            <input data-plate="${i}" value="${esc(it.plate || '')}" placeholder="А123ВС71"></div>
+            <input data-plate="${i}" value="${hesc(it.plate || '')}" placeholder="А123ВС71"></div>
         </div>
         <div class="row" style="margin-top:8px">
           <div><label>Откуда</label>
-            <input data-from="${i}" value="${esc(it.from || '')}" placeholder="г. Тула, ул. Пролетарская, 24"></div>
+            <input data-from="${i}" value="${hesc(it.from || '')}" placeholder="г. Тула, ул. Пролетарская, 24"></div>
           <div><label>Куда</label>
-            <input data-to="${i}" value="${esc(it.to || '')}" placeholder="г. Москва, ул. Рязанская, 28Б"></div>
+            <input data-to="${i}" value="${hesc(it.to || '')}" placeholder="г. Москва, ул. Рязанская, 28Б"></div>
         </div>
-        <div class="hint">${esc(itemName(it))}</div>
+        <div class="hint">${hesc(itemName(it))}</div>
         ${money}${swap}</div>`;
     }
     return `<div class="item">${head}
       <label>Что сделано</label>
-      <textarea data-name="${i}" placeholder="Опиши услугу">${esc(it.name)}</textarea>
+      <textarea data-name="${i}" placeholder="Опиши услугу">${hesc(it.name)}</textarea>
       ${money}${swap}</div>`;
   }).join('');
   updateTotal();
@@ -426,12 +427,12 @@ function paperHtml({ client, items: list, number, date }) {
   const total = list.reduce((s, i) => s + i.qty * i.price, 0);
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const rows = list.map((it, i) => `<tr>
-      <td style="text-align:center">${i + 1}</td><td>${esc(it.name)}</td>
+      <td style="text-align:center">${i + 1}</td><td>${hesc(it.name)}</td>
       <td style="text-align:center">шт.</td><td style="text-align:center">${S.money(it.qty)}</td>
       <td style="text-align:right">${S.money(it.price)}</td>
       <td style="text-align:right">${S.money(it.qty * it.price)}</td></tr>`).join('');
   const actRows = list.map((it, i) => `<tr>
-      <td style="text-align:center">${i + 1}</td><td>${esc(it.name)}</td>
+      <td style="text-align:center">${i + 1}</td><td>${hesc(it.name)}</td>
       <td style="text-align:center">${S.money(it.qty)}</td><td style="text-align:center">шт</td>
       <td style="text-align:right">${S.money(it.price)}</td>
       <td style="text-align:right">${S.money(it.qty * it.price)}</td></tr>`).join('');
@@ -441,16 +442,16 @@ function paperHtml({ client, items: list, number, date }) {
   return `
   <div class="doc">
     <table class="b">
-      <tr><td colspan="2" style="width:56%">${esc(I.bank)}<div style="font-size:9px;color:#444">Банк получателя</div></td>
+      <tr><td colspan="2" style="width:56%">${hesc(I.bank)}<div style="font-size:9px;color:#444">Банк получателя</div></td>
           <td style="width:12%">БИК</td><td>${I.bik}</td></tr>
       <tr><td colspan="2"></td><td>Сч. №</td><td>${I.ks}</td></tr>
       <tr><td style="width:8%">ИНН</td><td>${I.inn}</td><td>Сч. №</td><td>${I.rs}</td></tr>
-      <tr><td colspan="2">${esc(I.name)}<div style="font-size:9px;color:#444">Получатель</div></td>
+      <tr><td colspan="2">${hesc(I.name)}<div style="font-size:9px;color:#444">Получатель</div></td>
           <td colspan="2"></td></tr>
     </table>
     <h2>СЧЕТ № ${number} от ${date.str}г.</h2>
-    <div class="party"><b>Исполнитель:</b> ИНН ${I.inn}, КПП-, ${esc(I.name)}, ${esc(I.address)}, тел. ${I.phone}</div>
-    <div class="party"><b>Заказчик:</b> ${esc(client.line)}</div>
+    <div class="party"><b>Исполнитель:</b> ИНН ${I.inn}, КПП-, ${hesc(I.name)}, ${hesc(I.address)}, тел. ${I.phone}</div>
+    <div class="party"><b>Заказчик:</b> ${hesc(client.line)}</div>
     <table class="b" style="margin-top:8px">
       <tr><th style="width:4%">№</th><th>Наименование товаров (работ, услуг)</th>
         <th style="width:8%">Ед.</th><th style="width:9%">Кол-во</th>
@@ -471,8 +472,8 @@ function paperHtml({ client, items: list, number, date }) {
 
   <div class="doc">
     <h2>АКТ № ${number} от ${date.words}</h2>
-    <div class="party"><b>Исполнитель:</b> ${esc(I.shortName)}</div>
-    <div class="party"><b>Заказчик:</b> ${esc(client.actName)}</div>
+    <div class="party"><b>Исполнитель:</b> ${hesc(I.shortName)}</div>
+    <div class="party"><b>Заказчик:</b> ${hesc(client.actName)}</div>
     <table class="b" style="margin-top:8px">
       <tr><th style="width:4%">№</th><th>Наименование работ, услуг</th>
         <th style="width:9%">Кол-во</th><th style="width:8%">Ед.</th>
@@ -615,7 +616,7 @@ $('client').addEventListener('change', () => {
     'выписал счёт, посмотри последний файл в чате и поправь.';
   renderItems();
 })();
-
+})();
 </script>
 </body>
 </html>
