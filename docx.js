@@ -196,7 +196,7 @@ function imageSize(bytes) {
 // Печать со скана: ширина 5 см, высота по пропорции. Картинка плавающая и уходит
 // за текст, поэтому оттиск ложится прямо на строки подписи, как на бумаге.
 // up — насколько поднять её над своей строкой, долями от высоты картинки.
-function stampRun(bytes, up) {
+function stampRun(bytes, up, left) {
   const { w, h } = imageSize(bytes);
   const cx = 1550000;
   const cy = Math.round(cx * h / w);
@@ -205,7 +205,7 @@ function stampRun(bytes, up) {
  relativeHeight="3" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1"
  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
 <wp:simplePos x="0" y="0"/>
-<wp:positionH relativeFrom="column"><wp:posOffset>1150000</wp:posOffset></wp:positionH>
+<wp:positionH relativeFrom="column"><wp:posOffset>${left === undefined ? 1150000 : left}</wp:posOffset></wp:positionH>
 <wp:positionV relativeFrom="paragraph"><wp:posOffset>${dy}</wp:posOffset></wp:positionV>
 <wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
 <wp:wrapNone/><wp:docPr id="7" name="Печать"/>
@@ -220,8 +220,8 @@ function stampRun(bytes, up) {
 </a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
 }
 
-function stampParagraph(bytes, up) {
-  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes, up)}</w:p>`;
+function stampParagraph(bytes, up, left) {
+  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes, up, left)}</w:p>`;
 }
 
 function runProps(bold, size) {
@@ -371,7 +371,7 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`),
-    stamp ? stampParagraph(stamp.bytes, 1.1) : p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes, 0.72, 450000) : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),

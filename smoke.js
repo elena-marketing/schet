@@ -89,7 +89,7 @@ if (!printed) problems.push('кнопка PDF не вызвала печать')
 
 // журнал и черновик
 const jrn = JSON.parse(store['schet-journal'] || '[]');
-if (jrn.length !== 1) problems.push('в журнале записей: ' + jrn.length + ', ожидалась одна');
+if (jrn.length !== 1) problems.push('после первого документа в журнале записей: ' + jrn.length);
 else {
   const e = jrn[0];
   if (!e.number || !e.client || !e.total) problems.push('запись журнала неполная');
@@ -99,6 +99,19 @@ if (!nodes['cardLast'] || nodes['cardLast'].style.display !== 'block') {
   problems.push('строка последнего документа не показана');
 }
 if (!store['schet-draft']) problems.push('черновик не сохранён');
+
+// выставляем ещё два документа с другими номерами: в журнале должны остаться все
+[77, 78].forEach((n) => {
+  nodes['num'].value = String(n);
+  saved.length = 0;
+  nodes['wordInv'].click();
+});
+const jrnAll = JSON.parse(store['schet-journal'] || '[]');
+if (jrnAll.length !== 3) {
+  problems.push('в журнале записей: ' + jrnAll.length + ', а выставлено три документа');
+}
+const nums = jrnAll.map((e) => e.number).sort((a, b) => a - b).join(',');
+if (nums !== '76,77,78') problems.push('в журнале не те номера: ' + nums);
 
 // журнал должен быть компактным, без слов про формат
 (handlers['openJournal:click'] || []).forEach((f) => f({ target: nodes['openJournal'] }));
@@ -151,4 +164,4 @@ console.log('страница поднимается: клиенты, номер
 console.log('  номер:', nodes['num'].value, '| дата:', nodes['date'].value);
 console.log('  заказчиков в списке:', (client.innerHTML.match(/<option/g) || []).length);
 console.log('  счёт и акт в Word выгружаются по отдельности, печатная версия содержит оба документа');
-console.log('  в журнале записей:', jrn.length, '| черновик возвращается после перезагрузки');
+console.log('  в журнале сохраняются все документы:', nums, '| черновик возвращается после перезагрузки');

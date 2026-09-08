@@ -95,7 +95,7 @@
   </div>
 
   <div class="card" id="cardJournal" style="display:none">
-    <label>Выставленные документы</label>
+    <label id="journalTitle">Выставленные документы</label>
     <div id="journalList"></div>
     <button class="btn line" id="closeJournal" style="padding:9px;font-size:14px">Закрыть</button>
   </div>
@@ -257,7 +257,17 @@ function recordIssued(data, kind) {
   entry.total = total;
   entry.kinds = Array.from(new Set([...(entry.kinds || []), kind]));
   if (!found) list.unshift(entry);
-  try { localStorage.setItem('schet-journal', JSON.stringify(list.slice(0, 100))); } catch (e) {}
+  // Память браузера не бесконечна, а скан печати занимает много. Если места
+  // не хватило, отрезаем самые старые записи, но новые не теряем.
+  let rest = list.slice(0, 200);
+  for (;;) {
+    try { localStorage.setItem('schet-journal', JSON.stringify(rest)); break; }
+    catch (e) {
+      if (rest.length <= 1) { $('numHint').textContent =
+        'Не хватает памяти телефона, журнал не сохранился. Загрузи печать помельче.'; break; }
+      rest = rest.slice(0, Math.max(1, Math.floor(rest.length / 2)));
+    }
+  }
   renderLast();
 }
 
@@ -272,6 +282,8 @@ function renderLast() {
 
 function renderJournal() {
   const list = journal();
+  $('journalTitle').textContent = list.length
+    ? `Выставленные документы (${list.length})` : 'Выставленные документы';
   $('journalList').innerHTML = list.length
     ? list.map((e, i) => `<div class="jrow" data-open="${i}">
         <span><b>№ ${e.number}</b> от ${e.dateStr} · ${hesc(e.client.short)}</span>
@@ -347,13 +359,19 @@ function cleanStamp(dataUrl, box) {
       if (maxX < 0) { reject(new Error('на картинке не нашлось тёмных линий')); return; }
       ctx.putImageData(data, 0, 0);
 
+      // Ужимаем до разумной ширины: в документ печать идёт 4,3 см, а снимок
+      // с телефона весит мегабайты и вытесняет из памяти журнал и черновик.
       const pad = 6;
       minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
       maxX = Math.min(sw - 1, maxX + pad); maxY = Math.min(sh - 1, maxY + pad);
+      const cropW = maxX - minX + 1;
+      const cropH = maxY - minY + 1;
+      const limit = 700;
+      const scale = Math.min(1, limit / cropW);
       const out = document.createElement('canvas');
-      out.width = maxX - minX + 1; out.height = maxY - minY + 1;
-      out.getContext('2d').drawImage(cv, minX, minY, out.width, out.height,
-        0, 0, out.width, out.height);
+      out.width = Math.round(cropW * scale);
+      out.height = Math.round(cropH * scale);
+      out.getContext('2d').drawImage(cv, minX, minY, cropW, cropH, 0, 0, out.width, out.height);
       resolve(out.toDataURL('image/png'));
     };
     img.src = dataUrl;
@@ -742,7 +760,9 @@ $('journalList').addEventListener('click', (e) => {
 
 $('add').addEventListener('click', () => {
   if (items.length >= 5) { alert('Больше пяти строк в один счёт не ставим'); return; }
-  const transport = currentClient().kind === 'перевозка';
+  // Вторая строка продолжает первую: начали с перевозки — и дальше перевозка.
+  const last = items[items.length - 1];
+  const transport = last ? last.mode === 'перевозка' : currentClient().kind === 'перевозка';
   items.push(transport ? { mode: 'перевозка', qty: 1, price: 0 }
                        : { name: KONS, qty: 1, price: 0 });
   renderItems();
