@@ -123,13 +123,14 @@ for (const rows of [1, 3, 5]) {
   if (!inSign(inv2, 'Бухгалтер')) problems.push('счёт на ' + rows + ' строк: печать не в строке подписи');
 }
 
-// 6. в обоих документах печать поднята одинаково и стоит по центру
+// 6. в счёте печать слева поверх строк подписи, в акте — по центру
 const offOf = (x) => Number((x.match(/positionV[\s\S]*?<wp:posOffset>(-?\d+)</) || [])[1]);
-if (offOf(inv) !== offOf(act)) {
-  problems.push('печать поднята по-разному: счёт ' + offOf(inv) + ', акт ' + offOf(act));
+if (!/positionH[\s\S]{0,120}<wp:posOffset>1150000</.test(inv)) {
+  problems.push('в счёте печать не вернулась влево');
 }
-for (const [name, xml] of [['счёт', inv], ['акт', act]]) {
-  if (!xml.includes('<wp:align>center</wp:align>')) problems.push(name + ': печать не по центру');
+if (!act.includes('<wp:align>center</wp:align>')) problems.push('в акте печать не по центру');
+if (!(offOf(inv) < offOf(act))) {
+  problems.push('в счёте печать должна стоять выше, чем в акте: ' + offOf(inv) + ' и ' + offOf(act));
 }
 
 if (alerts.length) problems.push('всплыли сообщения: ' + alerts.join('; '));
@@ -144,4 +145,4 @@ console.log('  реквизиты разбираются в трёх запис�
 console.log('  разовый заказчик выпускается и не попадает в справочник');
 console.log('  счёт и акт на пять строк: суммы, прописи и печать на месте');
 console.log('  печать держится в строке подписи при 1, 3 и 5 строках в таблице');
-console.log('  печать по центру и поднята одинаково в обоих документах:', offOf(inv));
+console.log('  печать: в счёте слева и выше', offOf(inv) + ',', 'в акте по центру', offOf(act));

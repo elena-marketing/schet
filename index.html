@@ -644,12 +644,12 @@ $('pdf').addEventListener('click', () => {
 });
 
 // ── бумажный вид: он же уходит в PDF через печать ────────────────────────────
-function stampImg(up) {
+function stampImg(place) {
   // Оттиск должен лечь на строки подписи, поэтому поднимаем его отрицательным
   // отступом и уводим под текст.
   return (stampOn && stampData)
-    ? `<img src="${stampData.dataUrl}" alt="" style="height:96px;display:block;
-        margin:-58px auto 0;position:relative;z-index:-1">`
+    ? `<img src="${stampData.dataUrl}" alt="" style="height:96px;display:block;position:relative;
+        z-index:-1;${place === 'счёт' ? 'margin:-84px 0 0 132px;' : 'margin:-58px auto 0;'}">`
     : '<div style="margin-top:14px;font-size:11px">М.П.</div>';
 }
 
@@ -698,7 +698,7 @@ function paperHtml({ client, items: list, number, date }) {
     <div class="words">${words}</div>
     <div class="sign">Руководитель &nbsp;_____________________ (${I.signShort})<br>
       Бухгалтер &nbsp;&nbsp;&nbsp;&nbsp;_____________________ (${I.signShort})</div>
-    ${stampImg()}
+    ${stampImg('счёт')}
   </div>
 
   <div class="doc">
