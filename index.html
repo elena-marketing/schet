@@ -148,7 +148,8 @@
 
 <div class="bar">
   <div class="row">
-    <button class="btn" id="word">Word</button>
+    <button class="btn" id="wordInv">Счёт Word</button>
+    <button class="btn" id="wordAct">Акт Word</button>
     <button class="btn line" id="pdf">PDF</button>
   </div>
 </div>
@@ -402,7 +403,8 @@ function renderItems() {
           <div><label>Марка и модель</label>
             <input data-car="${i}" value="${hesc(it.car || '')}" placeholder="Лада Гранта"></div>
           <div><label>Гос. номер</label>
-            <input data-plate="${i}" value="${hesc(it.plate || '')}" placeholder="А123ВС71"></div>
+            <input data-plate="${i}" value="${hesc(it.plate || '')}" placeholder="А123ВС71"
+              autocapitalize="characters" spellcheck="false" style="text-transform:uppercase"></div>
         </div>
         <div class="row" style="margin-top:8px">
           <div><label>Откуда</label>
@@ -459,20 +461,27 @@ function download(bytes, name, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-$('word').addEventListener('click', () => {
+// Два файла подряд телефон не отдаёт: вторую скачку браузер молча глушит.
+// Поэтому счёт и акт выгружаются по отдельным кнопкам.
+function makeWord(kind) {
   const data = collect();
   if (!data) return;
   const { client, items: list, number, date } = data;
   const stamp = stampForDoc();
-  const inv = S.buildInvoice({ number, dateStr: date.str, client, items: list, stamp });
-  const act = S.buildAct({ number, dateStr: date.str, dateWords: date.words, client, items: list, stamp });
-  download(S.docxBytes(inv, stamp), `Счет №${number} от ${date.file} ${client.short}.docx`,
+  const xml = kind === 'акт'
+    ? S.buildAct({ number, dateStr: date.str, dateWords: date.words, client, items: list, stamp })
+    : S.buildInvoice({ number, dateStr: date.str, client, items: list, stamp });
+  const name = kind === 'акт'
+    ? `Акт №${number} от ${date.file} ${client.short}.docx`
+    : `Счет №${number} от ${date.file} ${client.short}.docx`;
+  download(S.docxBytes(xml, stamp), name,
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  setTimeout(() => download(S.docxBytes(act, stamp), `Акт №${number} от ${date.file} ${client.short}.docx`,
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), 600);
   rememberNumber(String(date.d.getFullYear()), number);
   $('numHint').textContent = `Выписан № ${number}. Следующий будет ${number + 1}.`;
-});
+}
+
+$('wordInv').addEventListener('click', () => makeWord('счёт'));
+$('wordAct').addEventListener('click', () => makeWord('акт'));
 
 $('pdf').addEventListener('click', () => {
   const data = collect();
@@ -568,7 +577,10 @@ $('items').addEventListener('input', (e) => {
   const t = e.target;
   const d = t.dataset;
   ['name', 'qty', 'price', 'car', 'plate', 'from', 'to'].forEach((key) => {
-    if (d[key] !== undefined) items[d[key]][key] = t.value;
+    if (d[key] === undefined) return;
+    // номер машины пишем заглавными сразу: так его и печатают в документах
+    if (key === 'plate') t.value = t.value.toUpperCase();
+    items[d[key]][key] = t.value;
   });
   if (d.car !== undefined || d.plate !== undefined || d.from !== undefined || d.to !== undefined) {
     const box = t.closest('.item').querySelector('.hint');

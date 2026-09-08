@@ -193,14 +193,22 @@ function imageSize(bytes) {
   return { w: 600, h: 600 };
 }
 
-// Печать со скана: ширина 5 см, высота по пропорции.
-function stampRun(bytes) {
+// Печать со скана: ширина 5 см, высота по пропорции. Картинка плавающая и уходит
+// за текст, поэтому оттиск ложится прямо на строки подписи, как на бумаге.
+// up — насколько поднять её над своей строкой, долями от высоты картинки.
+function stampRun(bytes, up) {
   const { w, h } = imageSize(bytes);
   const cx = 1800000;
   const cy = Math.round(cx * h / w);
-  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"
+  const dy = -Math.round(cy * (up === undefined ? 0.7 : up));
+  return `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0"
+ relativeHeight="3" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1"
  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
-<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="7" name="Печать"/>
+<wp:simplePos x="0" y="0"/>
+<wp:positionH relativeFrom="column"><wp:posOffset>1150000</wp:posOffset></wp:positionH>
+<wp:positionV relativeFrom="paragraph"><wp:posOffset>${dy}</wp:posOffset></wp:positionV>
+<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
+<wp:wrapNone/><wp:docPr id="7" name="Печать"/>
 <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
 <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
 <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -209,11 +217,11 @@ function stampRun(bytes) {
 <a:stretch><a:fillRect/></a:stretch></pic:blipFill>
 <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
 <a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>
-</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
 }
 
-function stampParagraph(bytes) {
-  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes)}</w:p>`;
+function stampParagraph(bytes, up) {
+  return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>${stampRun(bytes, up)}</w:p>`;
 }
 
 function runProps(bold, size) {
@@ -254,7 +262,7 @@ function documentXml(body) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>
-<w:pgMar w:top="720" w:right="700" w:bottom="720" w:left="850" w:header="0" w:footer="0" w:gutter="0"/>
+<w:pgMar w:top="600" w:right="560" w:bottom="600" w:left="620" w:header="0" w:footer="0" w:gutter="0"/>
 </w:sectPr></w:body></w:document>`;
 }
 
@@ -335,8 +343,8 @@ function buildInvoice({ number, dateStr, client, items, stamp }) {
     p(`Руководитель _____________________ (${ISP.signShort})`),
     p(''),
     p(`Бухгалтер       _____________________ (${ISP.signShort})`),
-    p(''),
-    stamp ? stampParagraph(stamp.bytes) : p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes, 0.95) : p(''),
+    stamp ? p('') : p('М.П.'),
   ].join('');
   return documentXml(body);
 }
@@ -363,7 +371,7 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`),
-    stamp ? stampParagraph(stamp.bytes) : p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes, 0.85) : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),
