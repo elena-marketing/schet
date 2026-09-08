@@ -113,6 +113,27 @@ if (jrnAll.length !== 3) {
 const nums = jrnAll.map((e) => e.number).sort((a, b) => a - b).join(',');
 if (nums !== '76,77,78') problems.push('в журнале не те номера: ' + nums);
 
+// кнопки заготовок должны переключать вид строки услуги
+nodes['preset2'].click();
+if (!nodes['items'].innerHTML.includes('Марка и модель')) {
+  problems.push('кнопка «Перевозка» не переключила строку на поля перевозки');
+}
+nodes['preset1'].click();
+if (!nodes['items'].innerHTML.includes('Что сделано')) {
+  problems.push('кнопка «Консультации» не вернула свободный текст');
+}
+
+// журнал должен держать много документов, а не два
+if (priceHandler) {
+  priceHandler({ target: { dataset: { price: '0' }, value: '1000', closest: () => ({ querySelector: () => null }) } });
+}
+[80, 81, 82, 83, 84].forEach((n) => {
+  nodes['num'].value = String(n);
+  nodes['wordInv'].click();
+});
+const jrnMany = JSON.parse(store['schet-journal'] || '[]');
+if (jrnMany.length < 8) problems.push('журнал держит записей: ' + jrnMany.length + ', а выставлено восемь');
+
 // журнал должен быть компактным, без слов про формат
 (handlers['openJournal:click'] || []).forEach((f) => f({ target: nodes['openJournal'] }));
 const jhtml = nodes['journalList'].innerHTML;
@@ -126,6 +147,15 @@ if (posPresets < 0) problems.push('нет блока с заготовками')
 else if (posPresets > posClient) problems.push('заготовки стоят ниже блока с заказчиком');
 if (!/id="preset1"[\s\S]{0,200}Консультации/.test(html)) problems.push('нет кнопки заготовки консультаций');
 if (!/id="preset2"[\s\S]{0,200}Перевозка/.test(html)) problems.push('нет кнопки заготовки перевозки');
+
+// перед перезагрузкой кладём в форму приметный текст, чтобы проверить черновик
+nodes['preset1'].click();
+if (priceHandler) {
+  priceHandler({ target: { dataset: { name: '0' }, value: 'Приметная услуга для черновика',
+    closest: () => ({ querySelector: () => null }) } });
+  priceHandler({ target: { dataset: { price: '0' }, value: '5000',
+    closest: () => ({ querySelector: () => null }) } });
+}
 
 // вторая загрузка страницы: черновик должен вернуться
 const nodes2 = {};
@@ -150,8 +180,11 @@ const run2 = new Function('window', 'document', 'localStorage', 'alert', 'atob',
   docx + '\n;\n' + page);
 run2({ print() {} }, document2, localStorage, (m) => alerts.push(m), () => '', class {}, FakeBlob,
   { createObjectURL: () => 'blob:x', revokeObjectURL() {} });
-if (!nodes2['items'].innerHTML.includes('Проверочная услуга')) {
+if (!nodes2['items'].innerHTML.includes('Приметная услуга для черновика')) {
   problems.push('после возврата в приложение введённая услуга не вернулась');
+}
+if (nodes2['preset1'].style.background !== 'var(--acc)') {
+  problems.push('после возврата не отмечена выбранная заготовка');
 }
 if (nodes2['cardLast'].style.display !== 'block') problems.push('после возврата нет строки последнего документа');
 

@@ -193,7 +193,9 @@
 // Приложение должно открываться и без сети: страница кладётся в кэш.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then((r) => r.update())
+      .catch(() => {});
   });
 }
 
@@ -466,6 +468,20 @@ function bytesFromDataUrl(url) {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+// Скан из ранних версий весит мегабайты и вытесняет журнал из памяти
+// браузера. При запуске ужимаем такой снимок один раз.
+function shrinkStoredStamp() {
+  if (!stampData || !stampData.dataUrl) return;
+  if (stampData.dataUrl.length < 400000) return;
+  cleanStamp(stampData.dataUrl, null)
+    .then((url) => {
+      stampData = { dataUrl: url, ext: 'png' };
+      try { localStorage.setItem('schet-stamp', JSON.stringify(stampData)); } catch (e) {}
+      renderStamp();
+    })
+    .catch(() => {});
 }
 
 function stampForDoc() {
@@ -782,8 +798,29 @@ $('add').addEventListener('click', () => {
                        : { name: KONS, qty: 1, price: 0 });
   renderItems();
 });
-$('preset1').addEventListener('click', () => { items = [{ name: KONS, qty: 1, price: 0 }]; renderItems(); });
-$('preset2').addEventListener('click', () => { items = [{ mode: 'перевозка', qty: 1, price: 0 }]; renderItems(); });
+function applyPreset(kind) {
+  items = kind === 'перевозка'
+    ? [{ mode: 'перевозка', qty: 1, price: 0 }]
+    : [{ name: KONS, qty: 1, price: 0 }];
+  renderItems();
+  saveDraft();
+  markPreset(kind);
+  // Блок услуг ниже экрана, и без прокрутки кажется, что кнопка не сработала.
+  const box = $('cardItems');
+  if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function markPreset(kind) {
+  const on = (b, yes) => {
+    b.style.background = yes ? 'var(--acc)' : '#eef1f5';
+    b.style.color = yes ? '#fff' : 'var(--ink)';
+  };
+  on($('preset1'), kind === 'консультации');
+  on($('preset2'), kind === 'перевозка');
+}
+
+$('preset1').addEventListener('click', () => applyPreset('консультации'));
+$('preset2').addEventListener('click', () => applyPreset('перевозка'));
 $('ooParse').addEventListener('click', () => {
   const r = parseRequisites($('ooPaste').value);
   if (!r.inn && !r.name) { alert('Не нашла ни ИНН, ни названия. Проверь текст.'); return; }
@@ -912,6 +949,7 @@ $('client').addEventListener('change', () => {
 
   fillClients();
   loadStamp();
+  shrinkStoredStamp();
   renderStamp();
   if (ISPDATA && ISPDATA.shortName) $('who').textContent = ISPDATA.shortName + ' · документы делаются в телефоне';
   const t = new Date();
@@ -922,6 +960,7 @@ $('client').addEventListener('change', () => {
     'выписал счёт, посмотри последний файл в чате и поправь.';
   const restored = loadDraft();
   renderItems();
+  markPreset(items[0] && items[0].mode === 'перевозка' ? 'перевозка' : 'консультации');
   renderLast();
   if (restored) $('numHint').textContent = 'Вернула то, что было введено до ухода из приложения.';
   ['client'].forEach((id) => $(id).addEventListener('change', saveDraft));

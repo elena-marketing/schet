@@ -1,6 +1,6 @@
 // Кладём страницу в кэш, чтобы приложение открывалось без интернета.
 // Файлов мало, поэтому кэшируем всё сразу при установке.
-const CACHE = 'schet-v1';
+const CACHE = 'schet-v2';
 const FILES = ['./', './index.html', './docx.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png'];
 
