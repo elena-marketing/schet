@@ -371,7 +371,7 @@ function buildAct({ number, dateStr, dateWords, client, items, stamp }) {
     p(''),
     p('Индивидуальный предприниматель'),
     p(`_________________________${ISP.sign}`),
-    stamp ? stampParagraph(stamp.bytes, 1.15, 250000) : p('М.П.'),
+    stamp ? stampParagraph(stamp.bytes, 0.95, 250000) : p('М.П.'),
     p(''),
     p('Грузоотправитель/грузополучатель'),
     p('_________________/_____________'),
