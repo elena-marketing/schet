@@ -105,6 +105,7 @@
   <div class="card" id="cardJournal" style="display:none">
     <label id="journalTitle">Выставленные документы</label>
     <div id="journalList"></div>
+    <button class="btn line" id="clearJournal" style="padding:9px;font-size:14px">Очистить журнал</button>
     <button class="btn line" id="closeJournal" style="padding:9px;font-size:14px">Закрыть</button>
   </div>
 
@@ -422,6 +423,32 @@ function saveClient(key, data) {
   localStorage.setItem('schet-data', JSON.stringify(d));
 }
 
+// Новые заказчики приезжают вместе с обновлением страницы. Досыпаем только тех,
+// кого на телефоне ещё нет: то, что Елена завела сама, не трогаем.
+const SEED_VERSION = 'seed-1';
+const SEED_CLIENTS = {
+  'туламашзавод': {
+    short: 'АО Туламашзавод',
+    line: 'АО "АК "ТУЛАМАШЗАВОД", ИНН 7106002836, 300002, г.Тула, ул.Мосина, дом №2, '
+      + 'тел.: 4872-36-86-58 Р/С 40702810966060101002000, в банке ТУЛЬСКОЕ ОТДЕЛЕНИЕ '
+      + '№8604 ПАО СБЕРБАНК, БИК 047003608, к/с 30101810300000000608',
+    actName: 'АО "АК "Туламашзавод"',
+    kind: 'перевозка',
+  },
+};
+
+function applySeed() {
+  let done = '';
+  try { done = localStorage.getItem('schet-seed') || ''; } catch (e) { return; }
+  if (done === SEED_VERSION) return;
+  Object.keys(SEED_CLIENTS).forEach((k) => {
+    if (CLIENTS[k]) return;
+    CLIENTS[k] = SEED_CLIENTS[k];
+    saveClient(k, SEED_CLIENTS[k]);
+  });
+  try { localStorage.setItem('schet-seed', SEED_VERSION); } catch (e) {}
+}
+
 const KONS = 'Услуги по оказанию консультационных и информационных услуг (без договора)';
 const PEREVOZ = 'Перевозка автомобиля , гос. номер , от  до , без договора';
 
@@ -521,16 +548,21 @@ function currentClient() {
   return CLIENTS[k];
 }
 
-function itemName(it) {
-  // Для перевозки собираем предложение из полей: на телефоне так быстрее,
-  // чем править длинную строку внутри текстового поля.
-  if (it.mode !== 'перевозка') return it.name;
+// Предложение из полей: на телефоне так быстрее, чем править длинную строку.
+function transportLine(it) {
   const parts = [];
   parts.push('Перевозка автомобиля' + (it.car ? ' ' + it.car : ''));
   if (it.plate) parts.push('гос. номер ' + it.plate);
   if (it.from || it.to) parts.push('от ' + (it.from || '—') + ' до ' + (it.to || '—'));
   parts.push('без договора');
   return parts.join(', ');
+}
+
+function itemName(it) {
+  // Перевозка бывает не только «из А в Б»: доставка, погрузка, несколько машин.
+  // Поэтому у строки есть второй режим — обычный текст вместо полей.
+  if (it.mode !== 'перевозка' || it.custom) return it.name || '';
+  return transportLine(it);
 }
 
 function renderItems() {
@@ -543,6 +575,15 @@ function renderItems() {
         <div><label>Цена за штуку, ₽</label>
           <input data-price="${i}" type="number" inputmode="decimal" step="0.01" value="${it.price || ''}"></div>
       </div>`;
+
+    if (it.mode === 'перевозка' && it.custom) {
+      return `<div class="item">${head}
+        <label>Что сделано</label>
+        <textarea data-name="${i}" placeholder="Например: перевозка СТП и ВТС до с. Бунырево, погрузка и выгрузка, без договора">${hesc(it.name || '')}</textarea>
+        <button class="btn line" data-fields="${i}"
+          style="padding:7px;font-size:13px;margin-top:6px">Вернуть поля</button>
+        ${money}</div>`;
+    }
 
     if (it.mode === 'перевозка') {
       return `<div class="item">${head}
@@ -560,6 +601,8 @@ function renderItems() {
             <input data-to="${i}" value="${hesc(it.to || '')}" placeholder="г. Москва, ул. Рязанская, 28Б"></div>
         </div>
         <div class="hint">${hesc(itemName(it))}</div>
+        <button class="btn line" data-custom="${i}"
+          style="padding:7px;font-size:13px;margin-top:6px">Ввести свой текст</button>
         ${money}</div>`;
     }
     return `<div class="item">${head}
@@ -743,7 +786,18 @@ $('items').addEventListener('input', (e) => {
 });
 $('items').addEventListener('click', (e) => {
   const d = e.target.dataset;
-  if (d.del !== undefined) { items.splice(Number(d.del), 1); renderItems(); return; }
+  if (d.del !== undefined) { items.splice(Number(d.del), 1); renderItems(); saveDraft(); return; }
+  if (d.custom !== undefined) {
+    const it = items[Number(d.custom)];
+    // Переносим собранное предложение в поле, чтобы не набирать его заново.
+    if (!it.name) it.name = transportLine(it);
+    it.custom = true;
+    renderItems(); saveDraft(); return;
+  }
+  if (d.fields !== undefined) {
+    items[Number(d.fields)].custom = false;
+    renderItems(); saveDraft(); return;
+  }
 });
 ['num', 'date', 'ooLine', 'ooName'].forEach((id) => {
   $(id).addEventListener('input', saveDraft);
@@ -755,6 +809,13 @@ $('openJournal').addEventListener('click', () => {
   $('cardJournal').style.display = 'block';
 });
 $('closeJournal').addEventListener('click', () => { $('cardJournal').style.display = 'none'; });
+$('clearJournal').addEventListener('click', () => {
+  if (!journal().length) { alert('Журнал и так пуст'); return; }
+  if (!confirm('Удалить все записи из журнала? Сами файлы документов останутся на месте.')) return;
+  try { localStorage.removeItem('schet-journal'); } catch (e) {}
+  renderJournal();
+  renderLast();
+});
 $('add').addEventListener('click', () => {
   if (items.length >= 5) { alert('Больше пяти строк в один счёт не ставим'); return; }
   // Вторая строка продолжает первую: начали с перевозки — и дальше перевозка.
@@ -917,6 +978,7 @@ $('client').addEventListener('change', () => {
   });
   if (!ready) return;
 
+  applySeed();
   fillClients();
   loadStamp();
   // Настройка положения печати была временной и осталась в памяти телефонов.
