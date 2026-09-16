@@ -61,14 +61,30 @@ const problems = [];
   if (!after['туламашзавод']) problems.push('Туламашзавод не добавился');
   if (!after['свой-клиент']) problems.push('клиент, заведённый вручную, пропал');
   if (!nodes['client'].innerHTML.includes('АО Туламашзавод')) problems.push('нового клиента нет в списке');
-  if (store['schet-seed'] !== 'seed-1') problems.push('отметка о подсеве не поставлена');
+  const SEEDV = (html.match(/SEED_VERSION = '([^']+)'/) || [])[1];
+  if (store['schet-seed'] !== SEEDV) problems.push('отметка о подсеве не поставлена: ' + store['schet-seed']);
+  const rs = (after['туламашзавод'].line.match(/Р\/С (\d+)/) || [])[1] || '';
+  if (rs.length !== 20) problems.push('расчётный счёт не 20 цифр: ' + rs);
+  const W = [7, 1, 3];
+  const chk = ('608' + rs).split('').reduce((a, c, i) => a + Number(c) * W[i % 3], 0);
+  if (chk % 10 !== 0) problems.push('расчётный счёт не проходит контрольный ключ: ' + rs);
   console.log('  подсев: клиентов стало', Object.keys(after).length,
-              '| свой клиент на месте:', !!after['свой-клиент']);
+              '| свой клиент на месте:', !!after['свой-клиент'],
+              '| р/с сходится:', rs.length === 20 && chk % 10 === 0);
 
   // повторный запуск не должен ничего менять
   const again = boot(store);
   const a2 = JSON.parse(again.store['schet-data']).clients;
   if (Object.keys(a2).length !== Object.keys(after).length) problems.push('повторный запуск дублирует клиентов');
+
+  // на телефоне уже лежат старые, неверные реквизиты — новая версия их чинит
+  const stale = JSON.parse(JSON.stringify(old));
+  stale.clients['туламашзавод'] = { short: 'АО Туламашзавод', line: 'Р/С 40702810966060101002000',
+                                    actName: 'x', kind: 'перевозка' };
+  const fixed = boot({ 'schet-data': JSON.stringify(stale), 'schet-seed': 'seed-1' });
+  const f = JSON.parse(fixed.store['schet-data']).clients['туламашзавод'];
+  if (f.line.includes('101002000')) problems.push('старые реквизиты не переписались новой версией');
+  if (!JSON.parse(fixed.store['schet-data']).clients['свой-клиент']) problems.push('при починке пропал свой клиент');
 }
 
 // ── 2. свой текст в перевозке ───────────────────────────────────────────────
